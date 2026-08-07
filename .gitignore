@@ -1,0 +1,20 @@
+# Python / Django
+backend/.venv/
+__pycache__/
+*.pyc
+backend/db.sqlite3
+backend/.env
+backend/staticfiles/
+
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+*.apk
+*.aab
+
+# OS / editor
+.DS_Store
+Thumbs.db
