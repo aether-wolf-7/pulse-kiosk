@@ -5,16 +5,25 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import br.com.pulsefitness.kiosk.data.ApiClient
 import br.com.pulsefitness.kiosk.data.DeviceConfigStore
+import br.com.pulsefitness.kiosk.data.ExerciseDto
 import br.com.pulsefitness.kiosk.data.HevyLinkRequest
 import br.com.pulsefitness.kiosk.data.LoginRequest
 import br.com.pulsefitness.kiosk.data.LoginResponse
 import br.com.pulsefitness.kiosk.data.MachineConfigResponse
+import br.com.pulsefitness.kiosk.data.SetEntry
+import br.com.pulsefitness.kiosk.data.db.KioskDatabase
+import br.com.pulsefitness.kiosk.data.db.PendingWorkout
+import br.com.pulsefitness.kiosk.sync.SyncWorker
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import retrofit2.HttpException
 import java.io.IOException
+import java.time.OffsetDateTime
+import java.util.UUID
 
 /**
  * Single source of truth for kiosk state: device provisioning, machine
@@ -112,6 +121,36 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: IOException) {
                 onResult("Sem conexão. Tente novamente.")
             }
+        }
+    }
+
+    /** Multifunctional machines: exercise picked before logging. */
+    val selectedExercise = MutableStateFlow<ExerciseDto?>(null)
+
+    fun selectExercise(exercise: ExerciseDto) {
+        selectedExercise.value = exercise
+    }
+
+    /**
+     * Offline-first save: the visit goes to the local queue and the sync
+     * worker drains it (immediately when online). The student is done the
+     * moment this returns; the network never keeps them waiting.
+     */
+    fun saveWorkout(exercise: ExerciseDto, sets: List<SetEntry>, onDone: () -> Unit) {
+        val current = _session.value ?: return
+        viewModelScope.launch {
+            KioskDatabase.get(getApplication()).pendingWorkoutDao().insert(
+                PendingWorkout(
+                    clientUuid = UUID.randomUUID().toString(),
+                    sessionToken = current.sessionToken,
+                    exerciseId = exercise.id,
+                    setsJson = Json.encodeToString(sets),
+                    loggedAt = OffsetDateTime.now().toString(),
+                )
+            )
+            SyncWorker.enqueue(getApplication())
+            endSession()
+            onDone()
         }
     }
 

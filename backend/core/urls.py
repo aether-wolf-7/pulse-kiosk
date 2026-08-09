@@ -8,4 +8,5 @@ urlpatterns = [
     path("auth/login/", views.LoginView.as_view()),
     path("auth/logout/", views.LogoutView.as_view()),
     path("hevy/link/", views.HevyLinkView.as_view()),
+    path("workouts/", views.WorkoutSubmitView.as_view()),
 ]

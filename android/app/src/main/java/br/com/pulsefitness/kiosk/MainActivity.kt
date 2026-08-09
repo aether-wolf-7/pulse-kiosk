@@ -26,8 +26,8 @@ import androidx.navigation.compose.rememberNavController
 import br.com.pulsefitness.kiosk.data.MachineConfigResponse
 import br.com.pulsefitness.kiosk.ui.ExercisePickScreen
 import br.com.pulsefitness.kiosk.ui.HevyLinkScreen
+import br.com.pulsefitness.kiosk.ui.LoggingScreen
 import br.com.pulsefitness.kiosk.ui.LoginScreen
-import br.com.pulsefitness.kiosk.ui.PlaceholderScreen
 import br.com.pulsefitness.kiosk.ui.SetupScreen
 
 object Routes {
@@ -100,14 +100,18 @@ fun KioskNavHost(viewModel: KioskViewModel, config: MachineConfigResponse) {
             )
         }
         composable(Routes.EXERCISE_PICK) {
-            ExercisePickScreen(config.exercises) { _ ->
-                // Stage 2: carry picked exercise into the logging screen.
+            ExercisePickScreen(config.exercises) { exercise ->
+                viewModel.selectExercise(exercise)
                 navController.navigate(Routes.LOGGING)
             }
         }
         composable(Routes.LOGGING) {
-            // Stage 2: sets/reps/load entry + save -> push to Hevy -> auto-logout.
-            PlaceholderScreen("Registro de séries (Etapa 2)")
+            val exercise = viewModel.selectedExercise.value ?: config.exercises.first()
+            LoggingScreen(
+                viewModel,
+                exercise,
+                onFinished = { navController.popBackStack(Routes.LOGIN, inclusive = false) },
+            )
         }
     }
 }

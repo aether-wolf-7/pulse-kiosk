@@ -1,10 +1,12 @@
 package br.com.pulsefitness.kiosk
 
 import android.app.Application
+import br.com.pulsefitness.kiosk.sync.SyncWorker
 
 class KioskApplication : Application() {
     override fun onCreate() {
         super.onCreate()
-        // Stage 2: initialize Room DB + WorkManager sync queue here.
+        // Drain anything left in the offline queue from before a restart.
+        SyncWorker.enqueue(this)
     }
 }

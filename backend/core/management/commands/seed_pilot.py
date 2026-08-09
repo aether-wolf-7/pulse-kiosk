@@ -37,7 +37,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         academia, created = Academia.objects.get_or_create(
-            slug="pulse-piloto", defaults={"name": "Pulse Fitness — Academia Piloto"}
+            slug="pulse-piloto", defaults={"name": "Pulse Fitness Academia Piloto"}
         )
         self.stdout.write(f"Academia: {academia} ({'criada' if created else 'já existia'})")
 

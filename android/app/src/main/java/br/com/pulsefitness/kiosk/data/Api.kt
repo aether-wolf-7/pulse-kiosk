@@ -56,6 +56,25 @@ data class StudentDto(
 @Serializable
 data class HevyLinkRequest(@SerialName("hevy_api_key") val hevyApiKey: String)
 
+@Serializable
+data class SetEntry(@SerialName("weight_kg") val weightKg: Double, val reps: Int)
+
+@Serializable
+data class WorkoutSubmitRequest(
+    @SerialName("client_uuid") val clientUuid: String,
+    @SerialName("exercise_id") val exerciseId: Long,
+    val sets: List<SetEntry>,
+    @SerialName("logged_at") val loggedAt: String,
+)
+
+@Serializable
+data class WorkoutSubmitResponse(
+    @SerialName("client_uuid") val clientUuid: String,
+    val status: String,
+    @SerialName("hevy_workout_id") val hevyWorkoutId: String,
+    val duplicate: Boolean,
+)
+
 interface KioskApi {
     @GET("machine/config/")
     suspend fun machineConfig(@Header("X-Device-Token") deviceToken: String): MachineConfigResponse
@@ -74,4 +93,10 @@ interface KioskApi {
         @Header("X-Session-Token") sessionToken: String,
         @Body body: HevyLinkRequest,
     )
+
+    @POST("workouts/")
+    suspend fun submitWorkout(
+        @Header("X-Session-Token") sessionToken: String,
+        @Body body: WorkoutSubmitRequest,
+    ): WorkoutSubmitResponse
 }
