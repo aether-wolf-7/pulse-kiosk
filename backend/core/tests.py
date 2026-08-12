@@ -299,6 +299,49 @@ class WorkoutSubmitTests(TestCase):
         mock_create.assert_not_called()
 
 
+    def test_duplicate_insert_race_returns_duplicate_not_500(self):
+        """Two resends of the same client_uuid can pass the existence check
+        at the same time; losing the insert race is a duplicate, not a crash.
+        The real interleaving needs Postgres (see concurrency_probe.py); here
+        the collision is forced so the recovery branch stays covered."""
+        from django.db import IntegrityError
+
+        cid = str(uuid.uuid4())
+        winner = WorkoutLog.objects.create(
+            client_uuid=cid,
+            student=self.student,
+            machine=self.supino,
+            exercise=self.exercise,
+            sets=[{"weight_kg": 20, "reps": 10}],
+            status=WorkoutLog.STATUS_PUSHED,
+            hevy_workout_id="HW-WINNER",
+        )
+
+        # Captured before patching, so calling it does not re-enter the mock.
+        real_filter = WorkoutLog.objects.filter
+        calls = {"n": 0}
+
+        def filter_side_effect(*args, **kwargs):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                # The existence check runs before the other request commits.
+                return real_filter(client_uuid=uuid.uuid4())
+            return real_filter(*args, **kwargs)
+
+        with patch("core.views.WorkoutLog.objects.filter", side_effect=filter_side_effect):
+            with patch(
+                "core.views.WorkoutLog.objects.create", side_effect=IntegrityError("dup")
+            ):
+                resp = self.submit(client_uuid=cid)
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()["duplicate"])
+        self.assertEqual(resp.json()["hevy_workout_id"], "HW-WINNER")
+        self.assertEqual(WorkoutLog.objects.filter(client_uuid=cid).count(), 1)
+        winner.refresh_from_db()
+        self.assertEqual(winner.status, WorkoutLog.STATUS_PUSHED)
+
+
 class LoginHardeningTests(TestCase):
     def setUp(self):
         self.academia, self.supino, self.cadeira, self.student = make_pilot()

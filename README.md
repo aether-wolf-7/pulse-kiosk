@@ -41,3 +41,21 @@ Tests: `manage.py test` (9 tests: device auth, tenant isolation, PIN, session li
 1. **Stage 1 (~2 wks):** backend, admin, ID+PIN auth, Hevy key linking. ← current
 2. **Stage 2 (~1 wk):** logging flow, push to Hevy on save, offline queue (Room + WorkManager).
 3. **Stage 3 (~1 wk):** kiosk mode on the A9+ (Device Owner via ADB + Lock Task Mode), real-device tests.
+
+## Testing against PostgreSQL
+
+SQLite serialises writers, so it cannot exercise the races that appear once
+three tablets share one backend. Before deploying, run the suite and the
+concurrency probe against Postgres:
+
+```bash
+createdb pulsekiosk_test
+export DATABASE_URL=postgres://user:pass@127.0.0.1:5432/pulsekiosk_test
+python manage.py migrate
+python manage.py test              # 31 tests
+python concurrency_probe.py        # double-push + duplicate-submit races
+```
+
+The probe asserts that concurrent pushes of one workout produce exactly one
+Hevy workout, and that simultaneous resends of one `client_uuid` produce one
+row and no 500s.

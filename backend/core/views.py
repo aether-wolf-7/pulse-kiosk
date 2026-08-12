@@ -3,6 +3,7 @@ import uuid
 
 from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework import status
@@ -185,6 +186,17 @@ class HevyLinkView(APIView):
         return Response({"detail": "Conta Hevy vinculada", "hevy_linked_at": student.hevy_linked_at})
 
 
+def _duplicate_response(log):
+    return Response(
+        {
+            "client_uuid": str(log.client_uuid),
+            "status": log.status,
+            "hevy_workout_id": log.hevy_workout_id,
+            "duplicate": True,
+        }
+    )
+
+
 def _validate_sets(raw):
     """Returns (sets, error). Each set: {"weight_kg": number >= 0, "reps": int > 0}."""
     if not isinstance(raw, list) or not raw or len(raw) > 20:
@@ -232,14 +244,7 @@ class WorkoutSubmitView(APIView):
         # Resend of something we already have: report its current state.
         existing = WorkoutLog.objects.filter(client_uuid=client_uuid).first()
         if existing:
-            return Response(
-                {
-                    "client_uuid": str(existing.client_uuid),
-                    "status": existing.status,
-                    "hevy_workout_id": existing.hevy_workout_id,
-                    "duplicate": True,
-                }
-            )
+            return _duplicate_response(existing)
 
         exercise = Exercise.objects.filter(
             id=request.data.get("exercise_id"), machine=session.machine, is_active=True
@@ -258,14 +263,24 @@ class WorkoutSubmitView(APIView):
         if timezone.is_naive(logged_at):
             logged_at = timezone.make_aware(logged_at)
 
-        log = WorkoutLog.objects.create(
-            client_uuid=client_uuid,
-            student=session.student,
-            machine=session.machine,
-            exercise=exercise,
-            sets=sets,
-            logged_at=logged_at,
-        )
+        try:
+            with transaction.atomic():
+                log = WorkoutLog.objects.create(
+                    client_uuid=client_uuid,
+                    student=session.student,
+                    machine=session.machine,
+                    exercise=exercise,
+                    sets=sets,
+                    logged_at=logged_at,
+                )
+        except IntegrityError:
+            # Another request with the same client_uuid won the insert between
+            # our existence check and this one. That is a resend, not an error:
+            # the offline queue and the retry path legitimately overlap.
+            duplicate = WorkoutLog.objects.filter(client_uuid=client_uuid).first()
+            if duplicate:
+                return _duplicate_response(duplicate)
+            raise
         UsageEvent.objects.create(
             academia=session.machine.academia,
             student=session.student,
