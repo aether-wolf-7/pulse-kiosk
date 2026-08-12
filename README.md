@@ -34,13 +34,14 @@ Admin at `http://localhost:8000/admin/`. API under `/api/v1/`:
 | `POST /api/v1/hevy/link/` | `X-Session-Token` + body `{hevy_api_key}` | First-access Hevy link (validated live, stored encrypted) |
 | `GET /api/v1/health/` | — | Health check |
 
-Tests: `manage.py test` (9 tests: device auth, tenant isolation, PIN, session lifecycle, key encryption).
+Tests: `manage.py test` (31 tests: device auth, tenant isolation, PIN lockout and throttling,
+session lifecycle, key encryption and rotation, idempotency, push races, offline resend).
 
 ## Stages
 
-1. **Stage 1 (~2 wks):** backend, admin, ID+PIN auth, Hevy key linking. ← current
-2. **Stage 2 (~1 wk):** logging flow, push to Hevy on save, offline queue (Room + WorkManager).
-3. **Stage 3 (~1 wk):** kiosk mode on the A9+ (Device Owner via ADB + Lock Task Mode), real-device tests.
+1. **Stage 1 (~2 wks):** backend, admin, ID+PIN auth, Hevy key linking. ✅ verified on device
+2. **Stage 2 (~1 wk):** logging flow, push to Hevy on save, offline queue (Room + WorkManager). ✅ verified on device
+3. **Stage 3 (~1 wk):** kiosk mode on the A9+ (Device Owner via ADB + Lock Task Mode), real-device tests. ← current
 
 ## Testing against PostgreSQL
 
