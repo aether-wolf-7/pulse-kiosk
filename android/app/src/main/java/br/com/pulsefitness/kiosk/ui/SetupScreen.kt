@@ -48,7 +48,7 @@ fun SetupScreen(viewModel: KioskViewModel) {
         Spacer(Modifier.height(32.dp))
         OutlinedTextField(
             value = token,
-            onValueChange = { token = it },
+            onValueChange = { token = it; error = null },
             label = { Text("Device token") },
             singleLine = true,
             modifier = Modifier.width(480.dp),

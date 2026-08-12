@@ -54,7 +54,9 @@ fun HevyLinkScreen(
         Spacer(Modifier.height(32.dp))
         OutlinedTextField(
             value = apiKey,
-            onValueChange = { apiKey = it },
+            // Drop the previous failure as soon as they start correcting it,
+            // instead of leaving "inválida" under a key they just retyped.
+            onValueChange = { apiKey = it; error = null },
             label = { Text("API key do Hevy") },
             singleLine = true,
             modifier = Modifier.width(480.dp),

@@ -12,6 +12,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -21,6 +22,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import br.com.pulsefitness.kiosk.KioskViewModel
 import br.com.pulsefitness.kiosk.data.MachineConfigResponse
+import kotlinx.coroutines.delay
+
+/** Idle time after which a half-typed login is wiped from the screen. */
+private const val LOGIN_IDLE_RESET_MS = 30_000L
 
 /**
  * Two-step ATM-style login on one keypad: type the student ID, OK,
@@ -42,6 +47,16 @@ fun LoginScreen(
         studentId = ""
         pin = ""
         typingPin = false
+        error = null
+    }
+
+    // A half-finished login is as sensitive as a live session: a student who
+    // types their PIN and walks off before pressing OK would otherwise leave
+    // it on screen for the next person to submit. Wipe it after a short idle.
+    LaunchedEffect(studentId, pin, typingPin) {
+        if (studentId.isEmpty() && pin.isEmpty()) return@LaunchedEffect
+        delay(LOGIN_IDLE_RESET_MS)
+        reset()
     }
 
     Row(
