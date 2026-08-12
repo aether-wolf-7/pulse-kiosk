@@ -1,21 +1,32 @@
 """Fernet encryption for Hevy API keys at rest.
 
 The encryption key lives in the environment (HEVY_KEY_ENCRYPTION_KEY),
-never in the database. In DEBUG a deterministic dev key derived from
-SECRET_KEY is used so local setup needs no extra step.
+never in the database and never derived from anything in the repo.
+
+In DEBUG, a random key is generated once into backend/.dev-fernet-key
+(gitignored) so local setup needs no extra step while still being
+unguessable to anyone reading the source. Production has no fallback:
+a missing key is a startup error, not a silently weak default.
 """
 
-import base64
-import hashlib
+from pathlib import Path
 
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 
+DEV_KEY_FILENAME = ".dev-fernet-key"
+
+__all__ = ["encrypt", "decrypt", "get_fernet", "InvalidToken"]
+
 
 def _dev_key() -> bytes:
-    digest = hashlib.sha256(settings.SECRET_KEY.encode()).digest()
-    return base64.urlsafe_b64encode(digest)
+    path = Path(settings.BASE_DIR) / DEV_KEY_FILENAME
+    if path.exists():
+        return path.read_bytes().strip()
+    key = Fernet.generate_key()
+    path.write_bytes(key)
+    return key
 
 
 def get_fernet() -> Fernet:
@@ -32,4 +43,6 @@ def encrypt(plaintext: str) -> str:
 
 
 def decrypt(ciphertext: str) -> str:
+    """Raises InvalidToken if the stored value was encrypted under a
+    different key (rotation, or a dev key carried into another env)."""
     return get_fernet().decrypt(ciphertext.encode()).decode()

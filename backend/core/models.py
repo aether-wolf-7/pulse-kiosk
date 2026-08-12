@@ -140,10 +140,12 @@ class WorkoutLog(models.Model):
     push to their Hevy account. client_uuid makes offline resends idempotent."""
 
     STATUS_PENDING = "pending"
+    STATUS_PUSHING = "pushing"
     STATUS_PUSHED = "pushed"
     STATUS_FAILED = "failed"
     STATUS_CHOICES = [
         (STATUS_PENDING, "Pendente"),
+        (STATUS_PUSHING, "Enviando"),
         (STATUS_PUSHED, "Enviado ao Hevy"),
         (STATUS_FAILED, "Falha no envio"),
     ]

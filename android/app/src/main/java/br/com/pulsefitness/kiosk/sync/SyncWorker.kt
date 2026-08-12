@@ -28,7 +28,7 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         val dao = KioskDatabase.get(applicationContext).pendingWorkoutDao()
         var transientFailure = false
 
-        for (pending in dao.all()) {
+        for (pending in dao.syncable()) {
             try {
                 ApiClient.api.submitWorkout(
                     pending.sessionToken,
@@ -39,19 +39,26 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
                         loggedAt = pending.loggedAt,
                     ),
                 )
+                // Accepted (or recognised as a duplicate) by the server, which
+                // owns the Hevy push from here. Only now is it safe to drop.
                 dao.delete(pending)
             } catch (e: HttpException) {
-                // 4xx/410: the server understood and refused; retrying the
-                // same payload can never succeed. Drop it (server keeps its
-                // own failed-push retry for the Hevy leg).
-                if (e.code() in 400..499 || e.code() == 410) {
-                    dao.delete(pending)
+                val body = "HTTP ${e.code()}"
+                if (e.code() == 410) {
+                    // Explicitly too old to resend; the server will never take it.
+                    dao.block(pending.clientUuid, "$body: registro antigo demais")
+                } else if (e.code() in 400..499) {
+                    // A 4xx here means the payload is being refused (exercise
+                    // deactivated, session too old, validation). Retrying will
+                    // not help, but this row is the ONLY copy of the student's
+                    // sets, so park it for inspection instead of deleting it.
+                    dao.block(pending.clientUuid, body)
                 } else {
-                    dao.bumpAttempts(pending.clientUuid)
+                    dao.recordFailure(pending.clientUuid, body)
                     transientFailure = true
                 }
             } catch (e: IOException) {
-                dao.bumpAttempts(pending.clientUuid)
+                dao.recordFailure(pending.clientUuid, e.message ?: "sem conexão")
                 transientFailure = true
             }
         }

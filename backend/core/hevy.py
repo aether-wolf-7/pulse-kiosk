@@ -39,7 +39,14 @@ class HevyClient:
         if not resp.ok:
             logger.warning("Hevy API %s %s -> %s: %s", method, path, resp.status_code, resp.text[:500])
             raise HevyError(f"Hevy API error {resp.status_code}", status_code=resp.status_code)
-        return resp.json()
+        try:
+            return resp.json()
+        except ValueError as exc:
+            # A 200 with a non-JSON body means we are talking to something
+            # that is not Hevy (captive portal, proxy error page). Treat it
+            # as a Hevy failure instead of letting it escape as a 500.
+            logger.warning("Hevy API %s %s -> non-JSON body: %s", method, path, resp.text[:200])
+            raise HevyError("Resposta inesperada da API do Hevy", status_code=resp.status_code) from exc
 
     def validate_key(self) -> bool:
         """Cheapest call that requires a valid key."""

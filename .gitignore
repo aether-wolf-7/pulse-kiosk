@@ -18,3 +18,6 @@ android/.idea/
 # OS / editor
 .DS_Store
 Thumbs.db
+
+# local dev encryption key (generated, machine-local)
+backend/.dev-fernet-key

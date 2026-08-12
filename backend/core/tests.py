@@ -2,10 +2,12 @@ import uuid
 from unittest.mock import patch
 
 from cryptography.fernet import Fernet
+from django.conf import settings
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from .models import Academia, Exercise, Machine, Student, StudentSession, UsageEvent, WorkoutLog
+from .sync import push_workout_log
 
 
 def make_pilot():
@@ -193,9 +195,8 @@ class WorkoutSubmitTests(TestCase):
         self.assertEqual(resp.json()["status"], "failed")
         self.assertTrue(UsageEvent.objects.filter(event_type="hevy_push_failed").exists())
 
-    @patch("core.sync.HevyClient.create_workout", return_value={"workout": {"id": "HW2"}})
-    def test_retry_command_pushes_failed_logs(self, mock_create):
-        log = WorkoutLog.objects.create(
+    def _failed_log(self, minutes_ago=10, **overrides):
+        fields = dict(
             client_uuid=uuid.uuid4(),
             student=self.student,
             machine=self.supino,
@@ -203,13 +204,60 @@ class WorkoutSubmitTests(TestCase):
             sets=[{"weight_kg": 30, "reps": 15}],
             status=WorkoutLog.STATUS_FAILED,
             error_detail="old failure",
+            logged_at=timezone.now() - timezone.timedelta(minutes=minutes_ago),
         )
+        fields.update(overrides)
+        return WorkoutLog.objects.create(**fields)
+
+    @patch("core.sync.HevyClient.create_workout", return_value={"workout": {"id": "HW2"}})
+    def test_retry_command_pushes_failed_logs(self, mock_create):
+        log = self._failed_log()
         from django.core.management import call_command
 
         call_command("retry_hevy_pushes")
         log.refresh_from_db()
         self.assertEqual(log.status, WorkoutLog.STATUS_PUSHED)
         self.assertEqual(log.hevy_workout_id, "HW2")
+
+    @patch("core.sync.HevyClient.create_workout", return_value={"workout": {"id": "HW3"}})
+    def test_retry_skips_recent_logs_still_being_pushed(self, mock_create):
+        """A log saved seconds ago may have an in-flight push; retrying it
+        would post the same workout to Hevy twice."""
+        log = self._failed_log(minutes_ago=0, status=WorkoutLog.STATUS_PENDING)
+        from django.core.management import call_command
+
+        call_command("retry_hevy_pushes")
+        log.refresh_from_db()
+        self.assertEqual(log.status, WorkoutLog.STATUS_PENDING)
+        mock_create.assert_not_called()
+
+    @patch("core.sync.HevyClient.create_workout", return_value={"workout": {"id": "HW4"}})
+    def test_push_claims_row_so_concurrent_retry_cannot_double_post(self, mock_create):
+        log = self._failed_log(status=WorkoutLog.STATUS_PUSHING)
+        # A row already claimed by an in-flight push must be left alone.
+        self.assertFalse(push_workout_log(log))
+        mock_create.assert_not_called()
+
+    @patch("core.sync.HevyClient.create_workout", return_value={"workout": {"id": "HW5"}})
+    def test_stale_pushing_row_is_recovered(self, mock_create):
+        log = self._failed_log(minutes_ago=30, status=WorkoutLog.STATUS_PUSHING)
+        from django.core.management import call_command
+
+        call_command("retry_hevy_pushes")
+        log.refresh_from_db()
+        self.assertEqual(log.status, WorkoutLog.STATUS_PUSHED)
+
+    @patch("core.sync.HevyClient.create_workout")
+    def test_undecryptable_key_fails_cleanly(self, mock_create):
+        """After an encryption key rotation the stored key cannot be read;
+        that must mark the log failed, not raise a 500."""
+        self.student.hevy_api_key_encrypted = Fernet(Fernet.generate_key()).encrypt(b"x").decode()
+        self.student.save()
+        resp = self.submit()
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.json()["status"], "failed")
+        mock_create.assert_not_called()
+        self.assertIn("vincular de novo", WorkoutLog.objects.first().error_detail)
 
     @patch("core.sync.HevyClient.create_workout", return_value={"workout": {"id": "HW1"}})
     def test_expired_session_within_grace_accepted(self, _mock):
@@ -249,3 +297,85 @@ class WorkoutSubmitTests(TestCase):
         self.assertEqual(resp.status_code, 201)
         self.assertEqual(resp.json()["status"], "failed")
         mock_create.assert_not_called()
+
+
+class LoginHardeningTests(TestCase):
+    def setUp(self):
+        self.academia, self.supino, self.cadeira, self.student = make_pilot()
+        self.headers = {"X-Device-Token": self.supino.device_token}
+        from django.core.cache import cache
+
+        cache.clear()  # DRF throttling is cache-backed
+
+    def login(self, student_id="1001", pin="4321"):
+        return self.client.post(
+            "/api/v1/auth/login/",
+            {"student_id": student_id, "pin": pin},
+            content_type="application/json",
+            headers=self.headers,
+        )
+
+    @override_settings(LOGIN_FAILURE_LIMIT=3)
+    def test_student_locked_out_after_repeated_wrong_pins(self):
+        for _ in range(3):
+            self.assertEqual(self.login(pin="0000").status_code, 401)
+        # Even the correct PIN is refused while the lockout window is open.
+        resp = self.login()
+        self.assertEqual(resp.status_code, 429)
+
+    @override_settings(LOGIN_FAILURE_LIMIT=5)
+    def test_successful_login_clears_failure_counter(self):
+        for _ in range(3):
+            self.login(pin="0000")
+        self.assertEqual(self.login().status_code, 200)
+        self.assertEqual(
+            UsageEvent.objects.filter(student=self.student, event_type="login_failed").count(), 0
+        )
+
+    def test_unknown_student_id_is_not_distinguishable(self):
+        """Unknown ID and wrong PIN must return the same body and both must
+        run a hash comparison, so response time does not leak enrolment."""
+        unknown = self.login(student_id="7777", pin="0000")
+        wrong_pin = self.login(pin="0000")
+        self.assertEqual(unknown.status_code, wrong_pin.status_code)
+        self.assertEqual(unknown.json(), wrong_pin.json())
+
+    def test_login_is_throttled_per_device(self):
+        from django.core.cache import cache
+
+        cache.clear()
+        codes = {self.login(student_id="7777", pin="0000").status_code for _ in range(25)}
+        self.assertIn(429, codes)
+
+
+class ConfigurationSafetyTests(TestCase):
+    """The production guard that stops a deploy from encrypting Hevy keys
+    with a key anybody could derive from the source."""
+
+    @override_settings(DEBUG=False, HEVY_KEY_ENCRYPTION_KEY="")
+    def test_missing_encryption_key_refuses_to_encrypt_in_production(self):
+        from django.core.exceptions import ImproperlyConfigured
+
+        from . import crypto
+
+        with self.assertRaises(ImproperlyConfigured):
+            crypto.encrypt("some-hevy-key")
+
+    @override_settings(DEBUG=False, HEVY_KEY_ENCRYPTION_KEY="", SECRET_KEY="x", ALLOWED_HOSTS=["*"])
+    def test_deploy_checks_flag_unsafe_production_config(self):
+        from .checks import check_production_secrets
+
+        ids = {e.id for e in check_production_secrets(None)}
+        self.assertEqual(ids, {"core.E001", "core.E003"})
+
+    def test_dev_key_is_random_not_derived_from_secret_key(self):
+        """The old dev key was sha256(SECRET_KEY), i.e. reproducible by
+        anyone with the repo. It must not be."""
+        import base64
+        import hashlib
+
+        from . import crypto
+
+        derivable = base64.urlsafe_b64encode(hashlib.sha256(settings.SECRET_KEY.encode()).digest())
+        with override_settings(HEVY_KEY_ENCRYPTION_KEY=""):
+            self.assertNotEqual(crypto._dev_key(), derivable)

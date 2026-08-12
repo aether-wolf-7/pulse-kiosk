@@ -1,6 +1,8 @@
 import logging
 import uuid
 
+from django.conf import settings
+from django.contrib.auth.hashers import check_password, make_password
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework import status
@@ -16,6 +18,17 @@ logger = logging.getLogger(__name__)
 # Offline resends arrive after the kiosk session expired; accept the token
 # for submission only, within this window.
 SUBMIT_GRACE_HOURS = 48
+
+# Compared against when the student ID does not exist, so a wrong ID costs
+# the same time as a wrong PIN.
+_DUMMY_PIN_HASH = make_password("0000")
+
+
+def _recent_failures(student) -> int:
+    window = timezone.now() - timezone.timedelta(minutes=settings.LOGIN_FAILURE_WINDOW_MINUTES)
+    return UsageEvent.objects.filter(
+        student=student, event_type="login_failed", created_at__gte=window
+    ).count()
 
 
 def get_machine(request):
@@ -71,6 +84,8 @@ class MachineConfigView(APIView):
 class LoginView(APIView):
     """ID + PIN login, scoped to the tablet's academia."""
 
+    throttle_scope_login = True
+
     def post(self, request):
         machine = get_machine(request)
         if not machine:
@@ -87,7 +102,18 @@ class LoginView(APIView):
         student = Student.objects.filter(
             academia=machine.academia, external_id=external_id, is_active=True
         ).first()
-        if not student or not student.check_pin(pin):
+
+        if student and _recent_failures(student) >= settings.LOGIN_FAILURE_LIMIT:
+            return Response(
+                {"detail": "Muitas tentativas. Procure a recepção para liberar seu acesso."},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
+        # Always run one hash comparison, even for an unknown ID: otherwise
+        # the response time reveals which IDs are enrolled.
+        pin_ok = student.check_pin(pin) if student else check_password(pin, _DUMMY_PIN_HASH)
+
+        if not student or not pin_ok:
             UsageEvent.objects.create(
                 academia=machine.academia,
                 machine=machine,
@@ -95,6 +121,10 @@ class LoginView(APIView):
                 event_type="login_failed",
             )
             return generic_error
+
+        # A correct PIN clears the lockout counter, so a student who fumbled
+        # their PIN a few times is not locked out for the rest of the window.
+        UsageEvent.objects.filter(student=student, event_type="login_failed").delete()
 
         session = StudentSession.objects.create(student=student, machine=machine)
         UsageEvent.objects.create(

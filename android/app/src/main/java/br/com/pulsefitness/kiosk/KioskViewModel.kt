@@ -1,6 +1,7 @@
 package br.com.pulsefitness.kiosk
 
 import android.app.Application
+import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import br.com.pulsefitness.kiosk.data.ApiClient
@@ -14,15 +15,20 @@ import br.com.pulsefitness.kiosk.data.SetEntry
 import br.com.pulsefitness.kiosk.data.db.KioskDatabase
 import br.com.pulsefitness.kiosk.data.db.PendingWorkout
 import br.com.pulsefitness.kiosk.sync.SyncWorker
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import retrofit2.HttpException
 import java.io.IOException
+import java.time.Instant
 import java.time.OffsetDateTime
+import java.time.format.DateTimeParseException
 import java.util.UUID
 
 /**
@@ -46,8 +52,60 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
     private val _session = MutableStateFlow<LoginResponse?>(null)
     val session: StateFlow<LoginResponse?> = _session
 
+    /** Set when a session ends by itself (idle or server expiry) rather than
+     *  by the student saving, so the UI can bounce back to the login screen. */
+    private val _timedOut = MutableStateFlow(false)
+    val timedOut: StateFlow<Boolean> = _timedOut
+
+    private var lastInteractionMs = 0L
+    private var sessionExpiresAtMs = Long.MAX_VALUE
+    private var watchdog: Job? = null
+
     init {
         loadConfig()
+    }
+
+    /** Any touch anywhere in the app postpones the idle logout. */
+    fun touch() {
+        lastInteractionMs = SystemClock.elapsedRealtime()
+    }
+
+    fun clearTimedOut() {
+        _timedOut.value = false
+    }
+
+    /**
+     * A tablet bolted to a machine is never "left logged in" safely: a
+     * student who walks off mid-set would otherwise hand their Hevy account
+     * to whoever sits down next. Log out on idle, and never outlive the
+     * session the server issued.
+     */
+    private fun startWatchdog(expiresAt: String) {
+        sessionExpiresAtMs = parseExpiry(expiresAt)
+        touch()
+        watchdog?.cancel()
+        watchdog = viewModelScope.launch {
+            while (isActive && _session.value != null) {
+                delay(WATCHDOG_TICK_MS)
+                val idleFor = SystemClock.elapsedRealtime() - lastInteractionMs
+                val serverExpired = System.currentTimeMillis() >= sessionExpiresAtMs
+                if (idleFor >= IDLE_TIMEOUT_MS || serverExpired) {
+                    endSession()
+                    _timedOut.value = true
+                    return@launch
+                }
+            }
+        }
+    }
+
+    private fun parseExpiry(raw: String): Long = try {
+        Instant.parse(raw).toEpochMilli()
+    } catch (e: DateTimeParseException) {
+        try {
+            OffsetDateTime.parse(raw).toInstant().toEpochMilli()
+        } catch (e2: DateTimeParseException) {
+            Long.MAX_VALUE // server format changed; idle timeout still applies
+        }
     }
 
     fun loadConfig() {
@@ -93,10 +151,19 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
             try {
-                _session.value = ApiClient.api.login(deviceToken, LoginRequest(studentId, pin))
+                val response = ApiClient.api.login(deviceToken, LoginRequest(studentId, pin))
+                _session.value = response
+                _timedOut.value = false
+                startWatchdog(response.expiresAt)
                 onResult(null)
             } catch (e: HttpException) {
-                onResult(if (e.code() == 401) "ID ou PIN incorretos" else "Erro no servidor (${e.code()})")
+                onResult(
+                    when (e.code()) {
+                        401 -> "ID ou PIN incorretos"
+                        429 -> "Muitas tentativas. Procure a recepção."
+                        else -> "Erro no servidor (${e.code()})"
+                    }
+                )
             } catch (e: IOException) {
                 onResult("Sem conexão. Tente novamente.")
             }
@@ -158,6 +225,10 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
     fun endSession() {
         val current = _session.value ?: return
         _session.value = null
+        selectedExercise.value = null
+        watchdog?.cancel()
+        watchdog = null
+        sessionExpiresAtMs = Long.MAX_VALUE
         viewModelScope.launch {
             try {
                 ApiClient.api.logout(current.sessionToken)
@@ -165,5 +236,11 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
                 // Session also expires server-side by TTL; nothing to do.
             }
         }
+    }
+
+    companion object {
+        /** No student takes this long between taps while at a machine. */
+        private const val IDLE_TIMEOUT_MS = 90_000L
+        private const val WATCHDOG_TICK_MS = 5_000L
     }
 }

@@ -1,8 +1,10 @@
 """
 Django settings — Pulse Kiosk backend.
 
-Env-driven: local dev falls back to SQLite and a dev Fernet key;
-production requires DATABASE_URL, SECRET_KEY and HEVY_KEY_ENCRYPTION_KEY.
+Env-driven and fail-closed: everything defaults to production-safe values,
+so forgetting a variable on a deploy degrades into a startup error, never
+into a silently insecure server. Local dev opts in via backend/.env
+(DEBUG=True); see .env.example.
 """
 
 from pathlib import Path
@@ -13,13 +15,17 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 env = environ.Env(
     DEBUG=(bool, False),
-    ALLOWED_HOSTS=(list, ["localhost", "127.0.0.1"]),
+    ALLOWED_HOSTS=(list, []),
 )
 environ.Env.read_env(BASE_DIR / ".env")
 
-SECRET_KEY = env("SECRET_KEY", default="dev-only-insecure-key")
-DEBUG = env("DEBUG", default=True)
-ALLOWED_HOSTS = env("ALLOWED_HOSTS")
+# No call-site default: django-environ only honours the scheme default above
+# when the call site passes none, so DEBUG is False unless explicitly set.
+DEBUG = env("DEBUG")
+SECRET_KEY = env("SECRET_KEY", default="dev-only-insecure-key" if DEBUG else "")
+# In dev the backend is reached from the emulator (10.0.2.2) and from real
+# tablets over the gym LAN, so any host goes. Production must set the list.
+ALLOWED_HOSTS = env("ALLOWED_HOSTS") or (["*"] if DEBUG else [])
 
 # Fernet key for Hevy API keys at rest. Never stored in the DB.
 # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
@@ -83,7 +89,14 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.AllowAny"],
     "UNAUTHENTICATED_USER": None,
+    "DEFAULT_THROTTLE_CLASSES": ["core.throttling.DeviceLoginThrottle"],
+    "DEFAULT_THROTTLE_RATES": {"login": "20/min"},
 }
+
+# A student is locked out after this many failed PIN attempts within the
+# window; 4-digit PINs are only safe if guessing is expensive.
+LOGIN_FAILURE_LIMIT = env.int("LOGIN_FAILURE_LIMIT", default=10)
+LOGIN_FAILURE_WINDOW_MINUTES = env.int("LOGIN_FAILURE_WINDOW_MINUTES", default=15)
 
 LANGUAGE_CODE = "pt-br"
 TIME_ZONE = "America/Sao_Paulo"

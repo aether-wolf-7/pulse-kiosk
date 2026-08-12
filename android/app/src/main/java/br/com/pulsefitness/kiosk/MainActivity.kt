@@ -13,10 +13,13 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -52,6 +55,24 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun KioskRoot(viewModel: KioskViewModel = viewModel()) {
     val boot by viewModel.boot.collectAsState()
+    // Every touch anywhere postpones the idle logout. Observed in the
+    // Initial pass so it never steals input from the widget underneath.
+    Box(
+        modifier = Modifier.fillMaxSize().pointerInput(Unit) {
+            awaitPointerEventScope {
+                while (true) {
+                    awaitPointerEvent(PointerEventPass.Initial)
+                    viewModel.touch()
+                }
+            }
+        }
+    ) {
+        BootContent(viewModel, boot)
+    }
+}
+
+@Composable
+private fun BootContent(viewModel: KioskViewModel, boot: KioskViewModel.BootState) {
     when (val state = boot) {
         is KioskViewModel.BootState.Loading -> Centered { CircularProgressIndicator() }
         is KioskViewModel.BootState.NeedsProvisioning -> SetupScreen(viewModel)
@@ -79,6 +100,16 @@ private fun Centered(content: @Composable () -> Unit) {
 @Composable
 fun KioskNavHost(viewModel: KioskViewModel, config: MachineConfigResponse) {
     val navController = rememberNavController()
+    val timedOut by viewModel.timedOut.collectAsState()
+
+    // Idle or expired session: drop everything and show the login screen so
+    // the next student never lands inside someone else's session.
+    LaunchedEffect(timedOut) {
+        if (timedOut) {
+            navController.popBackStack(Routes.LOGIN, inclusive = false)
+            viewModel.clearTimedOut()
+        }
+    }
 
     fun afterAuth(navController: NavHostController) {
         val next = if (config.machine.isMultifunctional) Routes.EXERCISE_PICK else Routes.LOGGING
