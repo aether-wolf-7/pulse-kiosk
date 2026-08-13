@@ -384,11 +384,41 @@ class LoginHardeningTests(TestCase):
         self.assertEqual(unknown.json(), wrong_pin.json())
 
     def test_login_is_throttled_per_device(self):
+        """A stolen device token must not allow unlimited PIN guessing."""
         from django.core.cache import cache
 
+        from .throttling import DeviceLoginThrottle
+
         cache.clear()
-        codes = {self.login(student_id="7777", pin="0000").status_code for _ in range(25)}
+        # DRF binds THROTTLE_RATES onto the class at import time, so
+        # override_settings(REST_FRAMEWORK=...) never reaches it. Patch the
+        # class. A low rate also keeps this to a handful of requests: at the
+        # real 20/min a slow machine can spend longer than the throttle window
+        # issuing them, the bucket resets mid-test, and nothing is throttled.
+        with patch.object(DeviceLoginThrottle, "THROTTLE_RATES", {"login": "3/min"}):
+            codes = [self.login(student_id="7777", pin="0000").status_code for _ in range(5)]
+
+        self.assertEqual(codes[0], 401)  # the first attempts still get through
         self.assertIn(429, codes)
+
+    def test_throttle_is_per_tablet_not_global(self):
+        """One tablet hammering login must not lock out the other machines."""
+        from django.core.cache import cache
+
+        from .throttling import DeviceLoginThrottle
+
+        cache.clear()
+        with patch.object(DeviceLoginThrottle, "THROTTLE_RATES", {"login": "3/min"}):
+            for _ in range(5):
+                self.login(student_id="7777", pin="0000")
+
+            other = self.client.post(
+                "/api/v1/auth/login/",
+                {"student_id": "1001", "pin": "4321"},
+                content_type="application/json",
+                headers={"X-Device-Token": self.cadeira.device_token},
+            )
+        self.assertEqual(other.status_code, 200)
 
 
 class ConfigurationSafetyTests(TestCase):

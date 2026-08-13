@@ -7,6 +7,7 @@ into a silently insecure server. Local dev opts in via backend/.env
 (DEBUG=True); see .env.example.
 """
 
+import sys
 from pathlib import Path
 
 import environ
@@ -107,3 +108,10 @@ STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+if "test" in sys.argv:
+    # PIN hashing is deliberately slow, which makes the suite slow and, worse,
+    # timing-sensitive: a loaded machine once stretched a run past the login
+    # throttle's one-minute window and failed a test that is not about timing.
+    # Production keeps the real hashers.
+    PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
