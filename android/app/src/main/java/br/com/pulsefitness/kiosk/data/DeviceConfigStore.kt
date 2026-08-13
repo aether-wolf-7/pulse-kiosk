@@ -16,11 +16,40 @@ private val Context.dataStore by preferencesDataStore(name = "device_config")
 
 class DeviceConfigStore(private val context: Context) {
     private val deviceTokenKey = stringPreferencesKey("device_token")
+    private val adminPinHashKey = stringPreferencesKey("admin_pin_hash")
+    private val cachedConfigKey = stringPreferencesKey("cached_machine_config")
 
     val deviceToken: Flow<String?> =
         context.dataStore.data.map { prefs -> prefs[deviceTokenKey] }
 
+    /**
+     * Hash of the gym's maintenance code, cached from the last successful
+     * config fetch. Cached rather than fetched on demand because staff need
+     * to leave kiosk mode precisely when the network is broken.
+     */
+    val adminPinHash: Flow<String?> =
+        context.dataStore.data.map { prefs -> prefs[adminPinHashKey] }
+
     suspend fun setDeviceToken(token: String) {
         context.dataStore.edit { prefs -> prefs[deviceTokenKey] = token }
     }
+
+    suspend fun setAdminPinHash(hash: String) {
+        context.dataStore.edit { prefs -> prefs[adminPinHashKey] = hash }
+    }
+
+    /**
+     * Last machine config that the backend confirmed.
+     *
+     * The tablet must boot into a usable screen with the network down. Once
+     * this app is the launcher and pinned, a "sem conexão" error screen would
+     * BE the device: no Home, no Settings, no way to fix the wifi that caused
+     * it. So the tablet boots from cache and refreshes in the background.
+     */
+    suspend fun cacheConfig(json: String) {
+        context.dataStore.edit { prefs -> prefs[cachedConfigKey] = json }
+    }
+
+    val cachedConfig: Flow<String?> =
+        context.dataStore.data.map { prefs -> prefs[cachedConfigKey] }
 }

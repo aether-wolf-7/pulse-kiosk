@@ -422,3 +422,43 @@ class ConfigurationSafetyTests(TestCase):
         derivable = base64.urlsafe_b64encode(hashlib.sha256(settings.SECRET_KEY.encode()).digest())
         with override_settings(HEVY_KEY_ENCRYPTION_KEY=""):
             self.assertNotEqual(crypto._dev_key(), derivable)
+
+
+class AdminPinTests(TestCase):
+    """The maintenance code that lets gym staff leave kiosk mode. The tablet
+    must be able to check it with no network, so only its hash travels."""
+
+    def setUp(self):
+        self.academia, self.supino, self.cadeira, self.student = make_pilot()
+        self.headers = {"X-Device-Token": self.supino.device_token}
+
+    def config(self):
+        return self.client.get("/api/v1/machine/config/", headers=self.headers).json()
+
+    def test_hash_is_sent_never_the_code(self):
+        import hashlib
+
+        self.academia.admin_pin = "482913"
+        self.academia.save()
+        data = self.config()["academia"]
+        expected = hashlib.sha256(b"482913").hexdigest()
+        self.assertEqual(data["admin_pin_hash"], expected)
+        self.assertNotIn("482913", str(data))
+
+    def test_blank_pin_disables_the_escape_hatch(self):
+        self.academia.admin_pin = ""
+        self.academia.save()
+        self.assertEqual(self.config()["academia"]["admin_pin_hash"], "")
+
+    def test_pin_is_scoped_to_the_academia(self):
+        other = Academia.objects.create(name="Outra", slug="outra", admin_pin="999999")
+        other_machine = Machine.objects.create(academia=other, number=1, name="Outra maq")
+        self.academia.admin_pin = "111111"
+        self.academia.save()
+
+        mine = self.config()["academia"]["admin_pin_hash"]
+        theirs = self.client.get(
+            "/api/v1/machine/config/",
+            headers={"X-Device-Token": other_machine.device_token},
+        ).json()["academia"]["admin_pin_hash"]
+        self.assertNotEqual(mine, theirs)

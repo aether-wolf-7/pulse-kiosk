@@ -42,6 +42,13 @@ session lifecycle, key encryption and rotation, idempotency, push races, offline
 1. **Stage 1 (~2 wks):** backend, admin, ID+PIN auth, Hevy key linking. ✅ verified on device
 2. **Stage 2 (~1 wk):** logging flow, push to Hevy on save, offline queue (Room + WorkManager). ✅ verified on device
 3. **Stage 3 (~1 wk):** kiosk mode on the A9+ (Device Owner via ADB + Lock Task Mode), real-device tests. ← current
+   - Lockdown implemented and verified on an Android 13 tablet emulator: real
+     `LOCK_TASK_MODE_LOCKED`, home/recents/back inert, no status or nav bar,
+     boots back into the app by itself after a reboot.
+   - Staff escape hatch: 7 taps in the top-left corner + the gym's maintenance
+     code (checked offline), then unlock / re-lock / un-enrol.
+   - Provisioning steps for the physical tablets: [docs/PROVISIONING.md](docs/PROVISIONING.md).
+   - Remaining: the three physical Galaxy Tab A9+ units.
 
 ## Testing against PostgreSQL
 

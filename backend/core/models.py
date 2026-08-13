@@ -1,3 +1,4 @@
+import hashlib
 import secrets
 import uuid
 
@@ -14,12 +15,31 @@ class Academia(models.Model):
 
     name = models.CharField(max_length=120)
     slug = models.SlugField(unique=True)
+    # Maintenance code staff type on the tablet to leave kiosk mode (wifi
+    # changes, reboots, app updates). Deliberately readable here: reception
+    # has to be able to look it up. Tablets only ever receive its hash, and
+    # verify offline, because kiosk mode has to be escapable when the
+    # network is down, which is exactly when you need out.
+    admin_pin = models.CharField(
+        max_length=12,
+        default="",
+        blank=True,
+        help_text="Código de manutenção para sair do modo quiosque no tablet. Vazio desativa a saída.",
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         verbose_name = "academia"
         verbose_name_plural = "academias"
+
+    @property
+    def admin_pin_hash(self) -> str:
+        """SHA-256 of the maintenance code. Sent to tablets so they can
+        check it offline without ever storing the code itself."""
+        if not self.admin_pin:
+            return ""
+        return hashlib.sha256(self.admin_pin.encode()).hexdigest()
 
     def __str__(self):
         return self.name

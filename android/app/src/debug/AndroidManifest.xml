@@ -1,11 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Debug only: the dev backend runs on plain HTTP (10.0.2.2 from the
-     emulator, LAN IP from a real tablet). Release builds keep Android's
-     default cleartext block and talk HTTPS to the hosted backend. -->
+<!-- Debug-only overrides.
+
+     usesCleartextTraffic: the dev backend runs on plain HTTP (10.0.2.2 from
+     the emulator, a LAN IP from a real tablet). Release builds keep Android's
+     default cleartext block and talk HTTPS to the hosted backend.
+
+     testOnly: lets `adb shell dpm remove-active-admin` un-enrol a dev tablet.
+     Without it that command refuses with "Attempt to remove non-test admin",
+     and a debug build that became Device Owner could only be removed by
+     factory resetting. Release builds must NOT carry this flag (Play refuses
+     it, and it would let anyone with USB access strip the kiosk); the release
+     escape route is the in-app break-glass in KioskManager.releaseDeviceOwner. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
     <application
         android:usesCleartextTraffic="true"
+        android:testOnly="true"
         tools:replace="android:usesCleartextTraffic" />
 </manifest>

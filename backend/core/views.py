@@ -70,7 +70,13 @@ class MachineConfigView(APIView):
         ]
         return Response(
             {
-                "academia": {"slug": machine.academia.slug, "name": machine.academia.name},
+                "academia": {
+                    "slug": machine.academia.slug,
+                    "name": machine.academia.name,
+                    # Hash only: the tablet must be able to check the
+                    # maintenance code with no network.
+                    "admin_pin_hash": machine.academia.admin_pin_hash,
+                },
                 "machine": {
                     "id": machine.id,
                     "number": machine.number,

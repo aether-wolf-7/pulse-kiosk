@@ -17,7 +17,11 @@ data class MachineConfigResponse(
 )
 
 @Serializable
-data class AcademiaDto(val slug: String, val name: String)
+data class AcademiaDto(
+    val slug: String,
+    val name: String,
+    @SerialName("admin_pin_hash") val adminPinHash: String = "",
+)
 
 @Serializable
 data class MachineDto(

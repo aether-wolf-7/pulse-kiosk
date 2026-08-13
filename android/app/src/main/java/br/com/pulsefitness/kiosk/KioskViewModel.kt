@@ -26,6 +26,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import retrofit2.HttpException
 import java.io.IOException
+import java.security.MessageDigest
 import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.format.DateTimeParseException
@@ -108,6 +109,15 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Boots from the cached config first, then refreshes in the background.
+     *
+     * Once this app is the launcher and pinned, whatever is on screen at boot
+     * IS the tablet: there is no Home, no Settings, no browser. A gym whose
+     * access point is down on Monday morning must still get working tablets,
+     * with the offline queue absorbing the workouts, so a network failure may
+     * never be the difference between "usable" and "brick".
+     */
     fun loadConfig() {
         viewModelScope.launch {
             _boot.value = BootState.Loading
@@ -116,6 +126,19 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
                 _boot.value = BootState.NeedsProvisioning
                 return@launch
             }
+
+            val cached = store.cachedConfig.first()?.let { json ->
+                runCatching { configJson.decodeFromString<MachineConfigResponse>(json) }.getOrNull()
+            }
+            if (cached != null) {
+                _boot.value = BootState.Ready(cached)
+                // Refresh quietly; only replace what is on screen on success,
+                // so a failed refresh never demotes a working tablet.
+                val fresh = fetchConfig(token)
+                if (fresh is BootState.Ready) _boot.value = fresh
+                return@launch
+            }
+
             _boot.value = fetchConfig(token)
         }
     }
@@ -135,8 +158,30 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Workouts still waiting to reach the backend, shown to staff. */
+    suspend fun pendingQueueCount(): Int =
+        KioskDatabase.get(getApplication()).pendingWorkoutDao().all().size
+
+    /**
+     * Checks the staff maintenance code against the hash cached from the last
+     * config fetch, so leaving kiosk mode works with no network.
+     */
+    suspend fun isAdminPin(candidate: String): Boolean {
+        val expected = store.adminPinHash.first().orEmpty()
+        if (expected.isBlank() || candidate.isBlank()) return false
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(candidate.toByteArray())
+            .joinToString("") { "%02x".format(it) }
+        return MessageDigest.isEqual(digest.toByteArray(), expected.toByteArray())
+    }
+
     private suspend fun fetchConfig(token: String): BootState = try {
-        BootState.Ready(ApiClient.api.machineConfig(token))
+        val config = ApiClient.api.machineConfig(token)
+        if (config.academia.adminPinHash.isNotBlank()) {
+            store.setAdminPinHash(config.academia.adminPinHash)
+        }
+        store.cacheConfig(configJson.encodeToString(config))
+        BootState.Ready(config)
     } catch (e: HttpException) {
         if (e.code() == 401) BootState.Error("Tablet não registrado no servidor")
         else BootState.Error("Erro no servidor (${e.code()})")
@@ -242,5 +287,7 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
         /** No student takes this long between taps while at a machine. */
         private const val IDLE_TIMEOUT_MS = 90_000L
         private const val WATCHDOG_TICK_MS = 5_000L
+
+        private val configJson = Json { ignoreUnknownKeys = true }
     }
 }

@@ -11,17 +11,26 @@
         android:supportsRtl="false"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
-        <!-- Stage 3: add HOME/DEFAULT intent filter so the app becomes the
-             launcher under Device Owner + Lock Task Mode. Kept as a plain
-             launcher activity during Stages 1-2 for easier development. -->
+        <!-- CATEGORY_HOME makes the app the launcher once it is Device Owner,
+             so the tablet boots straight in and Home goes nowhere. The stock
+             launcher still wins on an unprovisioned device (the system asks),
+             which keeps a dev build usable. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:screenOrientation="landscape"
-            android:launchMode="singleTask">
+            android:launchMode="singleInstance"
+            android:excludeFromRecents="true"
+            android:immersive="true"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|uiMode">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
 
@@ -34,6 +43,16 @@
                 android:resource="@xml/device_admin" />
             <intent-filter>
                 <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+                <action android:name="android.app.action.PROFILE_PROVISIONING_COMPLETE" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".kiosk.BootReceiver"
+            android:exported="true"
+            android:directBootAware="false">
+            <intent-filter android:priority="1000">
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
     </application>

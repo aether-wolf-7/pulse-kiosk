@@ -10,8 +10,9 @@ admin.site.index_title = "Gestão de alunos, máquinas e exercícios"
 
 @admin.register(Academia)
 class AcademiaAdmin(admin.ModelAdmin):
-    list_display = ("name", "slug", "is_active", "created_at")
+    list_display = ("name", "slug", "admin_pin", "is_active", "created_at")
     prepopulated_fields = {"slug": ("name",)}
+    fields = ("name", "slug", "admin_pin", "is_active")
 
 
 class ExerciseInline(admin.TabularInline):
