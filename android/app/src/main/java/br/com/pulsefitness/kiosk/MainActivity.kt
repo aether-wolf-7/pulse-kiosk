@@ -4,6 +4,8 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -58,6 +60,9 @@ import br.com.pulsefitness.kiosk.ui.SetupScreen
 private const val ADMIN_GESTURE_TAPS = 7
 private const val ADMIN_TAP_WINDOW_MS = 3_000L
 
+/** How often the foreground app re-checks that it is still pinned. */
+private const val KIOSK_RECHECK_MS = 10_000L
+
 /** Compose gives us a Context; the kiosk APIs need the Activity behind it. */
 private fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this
@@ -105,6 +110,23 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Re-asserts the lock while the app is in the foreground.
+     *
+     * onResume alone is not enough. If lock task is ever dropped while the
+     * app stays resumed, nothing else would notice and the tablet would sit
+     * unlocked in the gym until someone happened to restart it. Observed
+     * exactly once, after an emulator snapshot restore, which is not a real
+     * scenario but proves the hole is reachable.
+     */
+    private val kioskWatchdog = Handler(Looper.getMainLooper())
+    private val reassertLock = object : Runnable {
+        override fun run() {
+            if (!inMaintenance) KioskManager.enterKiosk(this@MainActivity)
+            kioskWatchdog.postDelayed(this, KIOSK_RECHECK_MS)
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         // Re-pin on every resume: if anything ever manages to break out (a
@@ -114,11 +136,21 @@ class MainActivity : ComponentActivity() {
             KioskManager.enterKiosk(this)
             hideSystemBars()
         }
+        kioskWatchdog.removeCallbacks(reassertLock)
+        kioskWatchdog.postDelayed(reassertLock, KIOSK_RECHECK_MS)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        kioskWatchdog.removeCallbacks(reassertLock)
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus && !inMaintenance) hideSystemBars()
+        if (hasFocus && !inMaintenance) {
+            KioskManager.enterKiosk(this)
+            hideSystemBars()
+        }
     }
 
     /** The back gesture must not leave the kiosk; navigation is handled
