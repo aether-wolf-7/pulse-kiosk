@@ -52,4 +52,20 @@ class DeviceConfigStore(private val context: Context) {
 
     val cachedConfig: Flow<String?> =
         context.dataStore.data.map { prefs -> prefs[cachedConfigKey] }
+
+    /**
+     * Unbinds the tablet from its machine so staff can point it at another
+     * one, or fix a token typed wrong during install.
+     *
+     * There is no other way to do this on a provisioned tablet: Android
+     * refuses `pm clear` for a Device Owner app, so without this the only
+     * options would be un-enrolling or a factory reset.
+     */
+    suspend fun clearProvisioning() {
+        context.dataStore.edit { prefs ->
+            prefs.remove(deviceTokenKey)
+            prefs.remove(cachedConfigKey)
+            prefs.remove(adminPinHashKey)
+        }
+    }
 }

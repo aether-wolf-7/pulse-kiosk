@@ -20,14 +20,22 @@ android {
 
         // Backend base URL per build type; device token is provisioned at
         // install time (Stage 3), not hardcoded.
-        buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8000/api/v1/\"")
+        // Override for a one-off build against another environment:
+        //   ./gradlew :app:assembleDebug -PapiBase=https://kiosk.pulsefitness.com.br/api/v1/
+        val apiBase = (project.findProperty("apiBase") as String?)
+            ?: "http://10.0.2.2:8000/api/v1/"
+        buildConfigField("String", "API_BASE_URL", "\"$apiBase\"")
     }
 
     buildTypes {
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            buildConfigField("String", "API_BASE_URL", "\"https://TBD-hosting/api/v1/\"")
+            // Production. HTTPS is mandatory here: the release build has no
+            // cleartext exemption, and students' Hevy keys ride this connection.
+            buildConfigField(
+                "String", "API_BASE_URL", "\"https://kiosk.pulsefitness.com.br/api/v1/\""
+            )
         }
     }
 

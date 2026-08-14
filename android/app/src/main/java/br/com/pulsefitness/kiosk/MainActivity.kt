@@ -251,6 +251,7 @@ private fun AdminGate(
         exercises = emptyList(),
     )
     var locked by remember { mutableStateOf(activity?.let { KioskManager.isLocked(it) } ?: false) }
+    var reprovisionError by remember { mutableStateOf<String?>(null) }
     val pending by produceState(0) { value = viewModel.pendingQueueCount() }
 
     AdminScreen(
@@ -279,6 +280,12 @@ private fun AdminGate(
                 locked = KioskManager.isLocked(it)
             }
         },
+        onReprovision = {
+            viewModel.reprovision { error ->
+                if (error == null) onClose() else reprovisionError = error
+            }
+        },
+        reprovisionError = reprovisionError,
         onClose = {
             activity?.let { if (!KioskManager.isLocked(it)) onLeaveMaintenance() }
             onClose()

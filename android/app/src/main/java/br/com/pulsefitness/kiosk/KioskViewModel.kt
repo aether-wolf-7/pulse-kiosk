@@ -158,6 +158,25 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Unbinds this tablet from its machine and returns to the setup screen.
+     * Refuses while workouts are still queued, so moving a tablet cannot
+     * throw away a student's sets that never reached the server.
+     */
+    fun reprovision(onResult: (error: String?) -> Unit) {
+        viewModelScope.launch {
+            val pending = pendingQueueCount()
+            if (pending > 0) {
+                onResult("$pending treino(s) ainda não enviado(s). Conecte na internet antes de trocar.")
+                return@launch
+            }
+            endSession()
+            store.clearProvisioning()
+            _boot.value = BootState.NeedsProvisioning
+            onResult(null)
+        }
+    }
+
     /** Workouts still waiting to reach the backend, shown to staff. */
     suspend fun pendingQueueCount(): Int =
         KioskDatabase.get(getApplication()).pendingWorkoutDao().all().size

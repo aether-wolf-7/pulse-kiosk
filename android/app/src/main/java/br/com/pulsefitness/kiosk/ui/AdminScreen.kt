@@ -43,6 +43,8 @@ fun AdminScreen(
     onUnlock: () -> Unit,
     onRelock: () -> Unit,
     onReleaseDeviceOwner: () -> Unit,
+    onReprovision: () -> Unit,
+    reprovisionError: String? = null,
     onClose: () -> Unit,
 ) {
     var pin by remember { mutableStateOf("") }
@@ -124,6 +126,19 @@ fun AdminScreen(
                 "Lembre de travar de novo antes de devolver o tablet pros alunos.",
             style = MaterialTheme.typography.bodyMedium,
         )
+
+        Spacer(Modifier.height(24.dp))
+        OutlinedButton(onClick = onReprovision, modifier = Modifier.width(360.dp)) {
+            Text("Trocar este tablet de máquina")
+        }
+        Text(
+            "Desvincula da máquina atual e volta pra tela de configuração.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        reprovisionError?.let {
+            Text(it, color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodyMedium)
+        }
 
         if (isDeviceOwner) {
             Spacer(Modifier.height(40.dp))
