@@ -1,0 +1,113 @@
+# Pulse Kiosk production stack.
+#
+# Deliberate choices for a VPS that already hosts someone else's service:
+#  - Only Caddy publishes ports, and only 80/443, which were free. The
+#    existing service on 8080 is untouched.
+#  - Postgres and the backend are NOT published to the host at all. They talk
+#    over a private compose network, so the database is unreachable from the
+#    internet no matter what the VPS firewall says.
+#  - Everything is namespaced `pulsekiosk-*` so it is obvious in Portainer
+#    which containers belong to this project.
+
+name: pulsekiosk
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: pulsekiosk-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-pulsekiosk}
+      POSTGRES_USER: ${POSTGRES_USER:-pulsekiosk}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pulsekiosk}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ../backend
+    image: pulsekiosk-backend:latest
+    container_name: pulsekiosk-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DEBUG: "False"
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+      # Losing this makes every stored Hevy key undecryptable and every
+      # student has to link again. Back it up somewhere other than this VPS.
+      HEVY_KEY_ENCRYPTION_KEY: ${HEVY_KEY_ENCRYPTION_KEY:?set HEVY_KEY_ENCRYPTION_KEY in .env}
+      ALLOWED_HOSTS: ${DOMAIN:?set DOMAIN in .env}
+      CSRF_TRUSTED_ORIGINS: https://${DOMAIN}
+      DATABASE_URL: postgres://${POSTGRES_USER:-pulsekiosk}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-pulsekiosk}
+      # Caddy already redirects to HTTPS; doing it again inside Django just
+      # causes redirect loops behind the proxy.
+      SECURE_SSL_REDIRECT: "False"
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/api/v1/health/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  # Retries workouts whose push to Hevy failed (Hevy downtime, transient
+  # errors). The command claims each row atomically, so running it on a timer
+  # can never double-post a workout.
+  retry:
+    image: pulsekiosk-backend:latest
+    container_name: pulsekiosk-retry
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_started
+    environment:
+      DEBUG: "False"
+      SECRET_KEY: ${SECRET_KEY}
+      HEVY_KEY_ENCRYPTION_KEY: ${HEVY_KEY_ENCRYPTION_KEY}
+      ALLOWED_HOSTS: ${DOMAIN}
+      DATABASE_URL: postgres://${POSTGRES_USER:-pulsekiosk}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-pulsekiosk}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          sleep 300
+          python manage.py retry_hevy_pushes || true
+        done
+    networks: [internal]
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: pulsekiosk-caddy
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_started
+    ports:
+      - "80:80"     # required for the Let's Encrypt HTTP challenge
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+      # Let's Encrypt emails expiry warnings here.
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data      # certificates live here; keep this volume
+      - caddy_config:/config
+    networks: [internal]
+
+volumes:
+  db_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  internal:
+    driver: bridge

@@ -1,0 +1,29 @@
+# Caddy obtains and renews the Let's Encrypt certificate automatically, which
+# is what lets the tablets talk HTTPS. The release build of the app refuses
+# plain HTTP, and students' Hevy API keys travel on this connection.
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode gzip
+
+	# The admin panel is for gym staff, not the public internet.
+	# Uncomment and set your office/gym IP to restrict it further:
+	# @admin path /admin*
+	# handle @admin {
+	#     @blocked not remote_ip 203.0.113.0/24
+	#     respond @blocked 403
+	# }
+
+	reverse_proxy backend:8000 {
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

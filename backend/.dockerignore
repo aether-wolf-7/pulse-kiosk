@@ -1,0 +1,17 @@
+# Keep the image small and free of local secrets/state.
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Local dev state that must never reach a server.
+.env
+.dev-fernet-key
+db.sqlite3
+staticfiles/
+
+# Dev-only tooling.
+concurrency_probe.py
+
+.git/
+.gitignore

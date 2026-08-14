@@ -21,3 +21,7 @@ Thumbs.db
 
 # local dev encryption key (generated, machine-local)
 backend/.dev-fernet-key
+
+# production env (secrets live on the server only)
+deploy/.env
+backend/staticfiles/
