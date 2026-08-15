@@ -94,6 +94,19 @@ Success: Device owner set to package br.com.pulsefitness.kiosk
 | `Admin component does not exist` | wrong component string | use the exact command above |
 | `Attempt to remove non-test admin` (on removal) | release build, by design | use the in-app maintenance screen |
 
+> **The test-only flag is captured when Device Owner is set, not when it is
+> removed.** Android records whether the admin was test-only at enrolment
+> time, so `dpm remove-active-admin` refuses a tablet that was enrolled with a
+> non-testOnly build even if you later install a testOnly one. Verified the
+> hard way on the test tablet. Practical consequence: enrol dev tablets with a
+> debug build from the start, and on production tablets rely on the in-app
+> break-glass, never on ADB.
+
+> **`pm clear` does not work on a Device Owner app either** (`SecurityException:
+> does not have permission CLEAR_APP_USER_DATA`). To point a tablet at a
+> different machine use "Trocar este tablet de máquina" in the maintenance
+> screen.
+
 ## 5. First launch and pairing
 
 Now connect Wi-Fi (Settings, or via the tablet's own screen after launch).

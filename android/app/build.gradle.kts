@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -5,6 +7,21 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
     id("com.google.devtools.ksp")
 }
+
+// Release signing. Credentials come from keystore.properties (gitignored) or
+// the environment, never from source control.
+//
+// The keystore itself is the single point of failure for updates: a tablet
+// will only accept an update signed with the SAME key, and a Device Owner app
+// cannot be uninstalled to work around it. Losing it means factory resetting
+// every tablet. Keep a backup somewhere safe.
+val keystoreProps = Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    if (f.exists()) f.inputStream().use { this.load(it) }
+}
+
+fun signingValue(key: String, env: String): String? =
+    (keystoreProps.getProperty(key) ?: System.getenv(env))?.takeIf { it.isNotBlank() }
 
 android {
     namespace = "br.com.pulsefitness.kiosk"
@@ -27,8 +44,27 @@ android {
         buildConfigField("String", "API_BASE_URL", "\"$apiBase\"")
     }
 
+    signingConfigs {
+        create("release") {
+            val storePath = signingValue("storeFile", "KEYSTORE_FILE")
+            if (storePath != null) {
+                storeFile = rootProject.file(storePath)
+                storePassword = signingValue("storePassword", "KEYSTORE_PASSWORD")
+                keyAlias = signingValue("keyAlias", "KEY_ALIAS") ?: "pulsekiosk"
+                keyPassword = signingValue("keyPassword", "KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            // Unsigned releases cannot be installed at all, so fail loudly at
+            // configuration time rather than shipping a useless APK.
+            signingConfig = if (signingValue("storeFile", "KEYSTORE_FILE") != null) {
+                signingConfigs.getByName("release")
+            } else {
+                null
+            }
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // Production. HTTPS is mandatory here: the release build has no

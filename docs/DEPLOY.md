@@ -122,3 +122,26 @@ Two things must be backed up, and they are useless without each other:
 2. `HEVY_KEY_ENCRYPTION_KEY` from `deploy/.env`.
 
 A database dump alone cannot decrypt a single Hevy key.
+
+## The APK download page
+
+`https://kiosk.pulsefitness.com.br/baixar/` serves the signed release APK plus
+short install instructions in Portuguese, so the client can test on any Android
+device without a cable.
+
+Caddy serves it from the `apk_data` volume; the API keeps the rest of the site.
+To publish a new build, upload it into the running Caddy container:
+
+```bash
+docker cp app-release.apk pulsekiosk-caddy:/srv/app/pulse-kiosk.apk
+```
+
+Two things bit during setup and are worth remembering:
+
+- **Do not use `{$DOMAIN}` inside an inline compose `config`.** Compose
+  interpolates `$DOMAIN` before Caddy sees it, leaving literal braces, and
+  Caddy then rejects `{kiosk.pulsefitness.com.br}` as a site address and
+  crash-loops. Write the hostname literally.
+- Installed by tapping, the APK is a **normal app, not a kiosk**. Device Owner
+  only happens through the ADB step in PROVISIONING.md. That is deliberate: the
+  client can try it on a personal phone without locking the phone down.

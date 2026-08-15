@@ -25,3 +25,7 @@ backend/.dev-fernet-key
 # production env (secrets live on the server only)
 deploy/.env
 backend/staticfiles/
+
+# release signing (keystore + passwords stay off git)
+android/keystore.properties
+android/*.jks
