@@ -492,3 +492,93 @@ class AdminPinTests(TestCase):
             headers={"X-Device-Token": other_machine.device_token},
         ).json()["academia"]["admin_pin_hash"]
         self.assertNotEqual(mine, theirs)
+
+
+class PairingCodeTests(TestCase):
+    """A six digit code is only safe because it is single use, short lived
+    and rate limited. Each of those is tested here."""
+
+    def setUp(self):
+        self.academia, self.supino, self.cadeira, self.student = make_pilot()
+        from django.core.cache import cache
+
+        cache.clear()
+
+    def pair(self, code):
+        return self.client.post(
+            "/api/v1/pair/", {"code": code}, content_type="application/json"
+        )
+
+    def test_code_returns_the_device_token(self):
+        from .models import PairingCode
+
+        pc = PairingCode.issue(self.supino)
+        resp = self.pair(pc.code)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["device_token"], self.supino.device_token)
+        self.assertEqual(resp.json()["machine"]["name"], self.supino.name)
+
+    def test_token_from_pairing_actually_works(self):
+        """End to end: the token handed out must open machine config."""
+        from .models import PairingCode
+
+        token = self.pair(PairingCode.issue(self.cadeira).code).json()["device_token"]
+        resp = self.client.get(
+            "/api/v1/machine/config/", headers={"X-Device-Token": token}
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()["machine"]["is_multifunctional"])
+
+    def test_code_is_single_use(self):
+        from .models import PairingCode
+
+        pc = PairingCode.issue(self.supino)
+        self.assertEqual(self.pair(pc.code).status_code, 200)
+        self.assertEqual(self.pair(pc.code).status_code, 404)
+
+    def test_expired_code_rejected(self):
+        from .models import PairingCode
+
+        pc = PairingCode.issue(self.supino)
+        PairingCode.objects.filter(pk=pc.pk).update(
+            expires_at=timezone.now() - timezone.timedelta(seconds=1)
+        )
+        self.assertEqual(self.pair(pc.code).status_code, 404)
+
+    def test_issuing_invalidates_the_previous_code(self):
+        """Otherwise old codes left on a whiteboard stay usable."""
+        from .models import PairingCode
+
+        old = PairingCode.issue(self.supino)
+        PairingCode.issue(self.supino)
+        self.assertEqual(self.pair(old.code).status_code, 404)
+
+    def test_unknown_and_malformed_codes_rejected(self):
+        self.assertEqual(self.pair("000000").status_code, 404)
+        self.assertEqual(self.pair("12345").status_code, 400)
+        self.assertEqual(self.pair("abcdef").status_code, 400)
+
+    def test_inactive_machine_cannot_be_paired(self):
+        from .models import PairingCode
+
+        pc = PairingCode.issue(self.supino)
+        Machine.objects.filter(pk=self.supino.pk).update(is_active=False)
+        self.assertEqual(self.pair(pc.code).status_code, 404)
+
+    def test_guessing_is_rate_limited(self):
+        """Six digits is a million combinations; the throttle is what makes
+        that expensive rather than the code length."""
+        from django.core.cache import cache
+
+        from .throttling import PairingThrottle
+
+        cache.clear()
+        with patch.object(PairingThrottle, "THROTTLE_RATES", {"pair": "3/min"}):
+            codes = [self.pair("111111").status_code for _ in range(5)]
+        self.assertIn(429, codes)
+
+    def test_pairing_is_recorded(self):
+        from .models import PairingCode
+
+        self.pair(PairingCode.issue(self.supino).code)
+        self.assertTrue(UsageEvent.objects.filter(event_type="tablet_paired").exists())

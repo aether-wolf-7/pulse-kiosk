@@ -74,6 +74,11 @@ services:
       HEVY_KEY_ENCRYPTION_KEY: ${HEVY_KEY_ENCRYPTION_KEY}
       ALLOWED_HOSTS: ${DOMAIN}
       DATABASE_URL: postgres://${POSTGRES_USER:-pulsekiosk}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-pulsekiosk}
+    # command MUST be a list. As a plain string, Docker splits it and
+    # `sh -c` receives only the first word, so the container crash-loops
+    # with "Syntax error: end of file unexpected". That happened in
+    # production and went unnoticed because a restarting sidecar looks
+    # much like a quiet one.
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |

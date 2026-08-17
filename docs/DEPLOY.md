@@ -145,3 +145,28 @@ Two things bit during setup and are worth remembering:
 - Installed by tapping, the APK is a **normal app, not a kiosk**. Device Owner
   only happens through the ADB step in PROVISIONING.md. That is deliberate: the
   client can try it on a personal phone without locking the phone down.
+
+### Pairing codes
+
+Install day does not involve typing device tokens. In the admin, select the
+machines and run **"Gerar código de pareamento para o tablet"**; each gets a
+six digit code, valid 30 minutes, single use. Type it on the tablet's setup
+screen and it swaps the code for the real token.
+
+The code is short, so what keeps it safe is that it expires, burns on first
+use, is invalidated when a newer one is issued, and `POST /api/v1/pair/` is
+rate limited to 10/min per address. The full token entry is still available
+behind a link on the same screen, for support.
+
+### Watch the sidecars, not just the API
+
+`pulsekiosk-retry` crash-looped from the first deploy to 2026-08-17 without
+anyone noticing, because the API was healthy and a restarting container looks
+much like a quiet one. Failed Hevy pushes were not being retried during that
+window. After any stack change, check:
+
+```bash
+docker ps --filter name=pulsekiosk --format 'table {{.Names}}\t{{.Status}}'
+```
+
+Anything saying `Restarting` is broken, however healthy the site looks.

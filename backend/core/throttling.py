@@ -18,3 +18,15 @@ class DeviceLoginThrottle(SimpleRateThrottle):
         token = request.headers.get("X-Device-Token", "")
         ident = token or self.get_ident(request)
         return self.cache_format % {"scope": self.scope, "ident": ident}
+
+
+class PairingThrottle(SimpleRateThrottle):
+    """Pairing codes are short, so guessing must be expensive. Keyed on the
+    client address because an unpaired tablet has no token to key on yet."""
+
+    scope = "pair"
+
+    def get_cache_key(self, request, view):
+        if getattr(view, "throttle_scope_pair", False) is not True:
+            return None
+        return self.cache_format % {"scope": self.scope, "ident": self.get_ident(request)}

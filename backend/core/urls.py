@@ -5,6 +5,7 @@ from . import views
 urlpatterns = [
     path("health/", views.HealthView.as_view()),
     path("machine/config/", views.MachineConfigView.as_view()),
+    path("pair/", views.PairView.as_view()),
     path("auth/login/", views.LoginView.as_view()),
     path("auth/logout/", views.LogoutView.as_view()),
     path("hevy/link/", views.HevyLinkView.as_view()),

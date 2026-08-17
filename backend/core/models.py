@@ -73,6 +73,58 @@ class Machine(models.Model):
         return f"{self.number} - {self.name} ({self.academia.slug})"
 
 
+class PairingCode(models.Model):
+    """Short code typed on a tablet to bind it to a machine.
+
+    Device tokens are 43 random characters. Typing one by hand on a tablet,
+    three times in a row on a gym floor, is how install day goes wrong: a
+    dropped character produces a "tablet não registrado" error that says
+    nothing about the real cause. So staff generate a six digit code in the
+    admin, type that, and the tablet swaps it for the real token.
+
+    Short codes are only safe because they are single use, expire quickly,
+    and the endpoint that redeems them is rate limited.
+    """
+
+    TTL_MINUTES = 30
+
+    machine = models.ForeignKey(Machine, on_delete=models.CASCADE, related_name="pairing_codes")
+    code = models.CharField(max_length=6, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "código de pareamento"
+        verbose_name_plural = "códigos de pareamento"
+        ordering = ["-created_at"]
+
+    @classmethod
+    def issue(cls, machine) -> "PairingCode":
+        """Issues a fresh code, invalidating any earlier unused one for this
+        machine so only a single code is ever live per machine."""
+        cls.objects.filter(machine=machine, used_at__isnull=True).update(
+            expires_at=timezone.now()
+        )
+        return cls.objects.create(
+            machine=machine,
+            code=f"{secrets.randbelow(1_000_000):06d}",
+            expires_at=timezone.now() + timezone.timedelta(minutes=cls.TTL_MINUTES),
+        )
+
+    @property
+    def is_valid(self) -> bool:
+        return self.used_at is None and timezone.now() < self.expires_at
+
+    def redeem(self):
+        self.used_at = timezone.now()
+        self.save(update_fields=["used_at"])
+
+    def __str__(self):
+        state = "válido" if self.is_valid else "usado/expirado"
+        return f"{self.code} -> {self.machine.name} ({state})"
+
+
 class Exercise(models.Model):
     machine = models.ForeignKey(Machine, on_delete=models.CASCADE, related_name="exercises")
     name = models.CharField(max_length=120)
@@ -202,6 +254,7 @@ class UsageEvent(models.Model):
         ("hevy_pushed", "Enviado ao Hevy"),
         ("hevy_push_failed", "Falha no envio ao Hevy"),
         ("session_expired", "Sessão expirada"),
+        ("tablet_paired", "Tablet pareado"),
     ]
 
     academia = models.ForeignKey(Academia, on_delete=models.CASCADE, related_name="events")

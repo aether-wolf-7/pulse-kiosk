@@ -11,6 +11,7 @@ import br.com.pulsefitness.kiosk.data.HevyLinkRequest
 import br.com.pulsefitness.kiosk.data.LoginRequest
 import br.com.pulsefitness.kiosk.data.LoginResponse
 import br.com.pulsefitness.kiosk.data.MachineConfigResponse
+import br.com.pulsefitness.kiosk.data.PairRequest
 import br.com.pulsefitness.kiosk.data.SetEntry
 import br.com.pulsefitness.kiosk.data.db.KioskDatabase
 import br.com.pulsefitness.kiosk.data.db.PendingWorkout
@@ -140,6 +141,40 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             _boot.value = fetchConfig(token)
+        }
+    }
+
+    /**
+     * Provisioning by short code: the tablet swaps six digits for the real
+     * device token. Typing a 43 character token by hand on a gym floor is
+     * how install day goes wrong, so this is the normal path.
+     */
+    fun pairWithCode(code: String, onDone: (ok: Boolean, message: String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val paired = ApiClient.api.pair(PairRequest(code))
+                store.setDeviceToken(paired.deviceToken)
+                when (val result = fetchConfig(paired.deviceToken)) {
+                    is BootState.Ready -> {
+                        _boot.value = result
+                        onDone(true, null)
+                    }
+                    is BootState.Error -> onDone(false, result.message)
+                    else -> onDone(false, "Erro inesperado")
+                }
+            } catch (e: HttpException) {
+                onDone(
+                    false,
+                    when (e.code()) {
+                        400 -> "Digite os 6 dígitos do código"
+                        404 -> "Código inválido ou expirado. Gere um novo no painel."
+                        429 -> "Muitas tentativas. Espere um minuto."
+                        else -> "Erro no servidor (${e.code()})"
+                    },
+                )
+            } catch (e: IOException) {
+                onDone(false, "Sem conexão com o servidor")
+            }
         }
     }
 

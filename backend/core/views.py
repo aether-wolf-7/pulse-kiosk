@@ -11,7 +11,15 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .hevy import HevyClient, HevyError
-from .models import Exercise, Machine, Student, StudentSession, UsageEvent, WorkoutLog
+from .models import (
+    Exercise,
+    Machine,
+    PairingCode,
+    Student,
+    StudentSession,
+    UsageEvent,
+    WorkoutLog,
+)
 from .sync import push_workout_log
 
 logger = logging.getLogger(__name__)
@@ -84,6 +92,57 @@ class MachineConfigView(APIView):
                     "is_multifunctional": machine.is_multifunctional,
                 },
                 "exercises": exercises,
+            }
+        )
+
+
+class PairView(APIView):
+    """Swaps a short pairing code for the machine's real device token.
+
+    Single use and short lived, and throttled hard: six digits is only a
+    million combinations, so the rate limit is what makes it safe rather than
+    the code length.
+    """
+
+    throttle_scope_pair = True
+
+    def post(self, request):
+        code = str(request.data.get("code", "")).strip()
+        if not code.isdigit() or len(code) != 6:
+            return Response(
+                {"detail": "Código inválido"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        pairing = (
+            PairingCode.objects.filter(code=code)
+            .select_related("machine", "machine__academia")
+            .order_by("-created_at")
+            .first()
+        )
+        if not pairing or not pairing.is_valid:
+            # Same message either way: never reveal whether a code existed.
+            return Response(
+                {"detail": "Código inválido ou expirado. Gere um novo no painel."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        machine = pairing.machine
+        if not machine.is_active or not machine.academia.is_active:
+            return Response(
+                {"detail": "Máquina inativa"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        pairing.redeem()
+        UsageEvent.objects.create(
+            academia=machine.academia,
+            machine=machine,
+            event_type="tablet_paired",
+            metadata={"machine": machine.name},
+        )
+        return Response(
+            {
+                "device_token": machine.device_token,
+                "machine": {"number": machine.number, "name": machine.name},
             }
         )
 

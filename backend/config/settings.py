@@ -93,8 +93,11 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.AllowAny"],
     "UNAUTHENTICATED_USER": None,
-    "DEFAULT_THROTTLE_CLASSES": ["core.throttling.DeviceLoginThrottle"],
-    "DEFAULT_THROTTLE_RATES": {"login": "20/min"},
+    "DEFAULT_THROTTLE_CLASSES": [
+        "core.throttling.DeviceLoginThrottle",
+        "core.throttling.PairingThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {"login": "20/min", "pair": "10/min"},
 }
 
 # A student is locked out after this many failed PIN attempts within the

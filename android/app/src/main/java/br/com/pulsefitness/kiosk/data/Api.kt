@@ -39,6 +39,18 @@ data class ExerciseDto(
 )
 
 @Serializable
+data class PairRequest(val code: String)
+
+@Serializable
+data class PairResponse(
+    @SerialName("device_token") val deviceToken: String,
+    val machine: PairMachineDto,
+)
+
+@Serializable
+data class PairMachineDto(val number: Int, val name: String)
+
+@Serializable
 data class LoginRequest(
     @SerialName("student_id") val studentId: String,
     val pin: String,
@@ -80,6 +92,9 @@ data class WorkoutSubmitResponse(
 )
 
 interface KioskApi {
+    @POST("pair/")
+    suspend fun pair(@Body body: PairRequest): PairResponse
+
     @GET("machine/config/")
     suspend fun machineConfig(@Header("X-Device-Token") deviceToken: String): MachineConfigResponse
 
