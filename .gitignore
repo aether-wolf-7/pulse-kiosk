@@ -33,3 +33,6 @@ android/*.jks
 # provisioning kit downloads these locally
 scripts/tablet/platform-tools/
 scripts/tablet/*.apk
+
+# generated from the markdown, not edited by hand
+docs/INSTALACAO_TABLETS.html

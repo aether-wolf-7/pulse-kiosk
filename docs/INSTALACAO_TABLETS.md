@@ -44,9 +44,9 @@ zerado.
    Instale e reinicie o computador se ele pedir.
 
 5. **Ligue a Depuração USB**
-   - Ajustes > Sobre o tablet > Informações de software
-   - Toque **7 vezes** seguidas em Número da versão
-   - Volte, entre em Opções do desenvolvedor e ligue **Depuração USB**
+    - Ajustes > Sobre o tablet > Informações de software
+    - Toque **7 vezes** seguidas em Número da versão
+    - Volte, entre em Opções do desenvolvedor e ligue **Depuração USB**
 
 6. **Agora sim conecte o wi-fi da academia.**
 
@@ -63,11 +63,11 @@ zerado.
    **Sempre permitir** e toque em Permitir.
 
 4. Quando a janela pedir o **código de 6 dígitos**:
-   - Abra o painel, entre em **Máquinas**
-   - Marque a máquina onde este tablet vai ficar
-   - Em Ação, escolha **Gerar código de pareamento para o tablet** e clique em Ir
-   - O código aparece na tela, com validade de 30 minutos
-   - Digite os 6 números no tablet e toque em OK
+    - Abra o painel, entre em **Máquinas**
+    - Marque a máquina onde este tablet vai ficar
+    - Em Ação, escolha **Gerar código de pareamento para o tablet** e clique em Ir
+    - O código aparece na tela, com validade de 30 minutos
+    - Digite os 6 números no tablet e toque em OK
 
 5. O tablet deve mostrar o nome da máquina e pedir ID e PIN do aluno.
 
