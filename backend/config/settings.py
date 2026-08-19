@@ -55,6 +55,8 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
+    # The admin is internet facing; DRF throttles do not cover it.
+    "core.admin_security.AdminLoginRateLimitMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
@@ -100,10 +102,26 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {"login": "20/min", "pair": "10/min"},
 }
 
+# Every rate limit here is cache backed, and gunicorn runs multiple workers.
+# With the default in-memory cache each worker keeps its own counters, so a
+# limit of 10 is really 10 per worker and resets on restart. The database
+# cache is shared by all workers and survives a restart, which is what the
+# throttles actually need. No extra service to run.
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+        "LOCATION": "core_cache_table",
+    }
+}
+
 # A student is locked out after this many failed PIN attempts within the
 # window; 4-digit PINs are only safe if guessing is expensive.
 LOGIN_FAILURE_LIMIT = env.int("LOGIN_FAILURE_LIMIT", default=10)
 LOGIN_FAILURE_WINDOW_MINUTES = env.int("LOGIN_FAILURE_WINDOW_MINUTES", default=15)
+
+# Failed Django admin logins allowed per IP before a temporary block.
+ADMIN_LOGIN_ATTEMPT_LIMIT = env.int("ADMIN_LOGIN_ATTEMPT_LIMIT", default=10)
+ADMIN_LOGIN_WINDOW_SECONDS = env.int("ADMIN_LOGIN_WINDOW_SECONDS", default=900)
 
 LANGUAGE_CODE = "pt-br"
 TIME_ZONE = "America/Sao_Paulo"
@@ -136,6 +154,9 @@ if not DEBUG:
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 if "test" in sys.argv:
+    # The cache table is created by a management command, not a migration, so
+    # tests use the in-process cache instead.
+    CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
     # PIN hashing is deliberately slow, which makes the suite slow and, worse,
     # timing-sensitive: a loaded machine once stretched a run past the login
     # throttle's one-minute window and failed a test that is not about timing.

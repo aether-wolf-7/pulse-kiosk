@@ -582,3 +582,57 @@ class PairingCodeTests(TestCase):
 
         self.pair(PairingCode.issue(self.supino).code)
         self.assertTrue(UsageEvent.objects.filter(event_type="tablet_paired").exists())
+
+
+class AdminLoginRateLimitTests(TestCase):
+    """The Django admin is on the public internet and DRF throttles do not
+    cover it, so brute forcing it was free."""
+
+    def setUp(self):
+        from django.contrib.auth.models import User
+        from django.core.cache import cache
+
+        cache.clear()
+        User.objects.create_superuser("dono", "d@e.com", "uma-senha-bem-forte-123")
+
+    def attempt(self, password):
+        return self.client.post(
+            "/admin/login/",
+            {"username": "dono", "password": password, "next": "/admin/"},
+        )
+
+    @override_settings(ADMIN_LOGIN_ATTEMPT_LIMIT=3)
+    def test_repeated_failures_are_blocked(self):
+        for _ in range(3):
+            self.assertNotEqual(self.attempt("errada").status_code, 429)
+        self.assertEqual(self.attempt("errada").status_code, 429)
+
+    @override_settings(ADMIN_LOGIN_ATTEMPT_LIMIT=3)
+    def test_block_applies_even_to_the_correct_password(self):
+        """Otherwise an attacker who guesses right on attempt 500 still wins."""
+        for _ in range(3):
+            self.attempt("errada")
+        self.assertEqual(self.attempt("uma-senha-bem-forte-123").status_code, 429)
+
+    @override_settings(ADMIN_LOGIN_ATTEMPT_LIMIT=5)
+    def test_successful_login_clears_the_counter(self):
+        self.attempt("errada")
+        self.attempt("errada")
+        resp = self.attempt("uma-senha-bem-forte-123")
+        self.assertEqual(resp.status_code, 302)
+        from django.core.cache import cache
+
+        self.assertEqual(cache.get("adminlogin:127.0.0.1", 0), 0)
+
+    @override_settings(ADMIN_LOGIN_ATTEMPT_LIMIT=2)
+    def test_get_requests_are_never_blocked(self):
+        """Staff must always be able to load the login page itself."""
+        for _ in range(5):
+            self.attempt("errada")
+        self.assertEqual(self.client.get("/admin/login/").status_code, 200)
+
+    @override_settings(ADMIN_LOGIN_ATTEMPT_LIMIT=2)
+    def test_other_paths_unaffected(self):
+        for _ in range(5):
+            self.attempt("errada")
+        self.assertEqual(self.client.get("/api/v1/health/").status_code, 200)

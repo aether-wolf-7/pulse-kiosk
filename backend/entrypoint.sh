@@ -14,6 +14,9 @@ python manage.py check --deploy --fail-level ERROR
 echo "Applying migrations..."
 python manage.py migrate --noinput
 
+echo "Ensuring cache table..."
+python manage.py createcachetable
+
 echo "Collecting static files..."
 python manage.py collectstatic --noinput
 

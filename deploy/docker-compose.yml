@@ -88,6 +88,42 @@ services:
         done
     networks: [internal]
 
+  # Nightly database dump. Without this, losing the db volume loses every
+  # student and every Hevy link. Restore was verified end to end (dump ->
+  # scratch database -> row counts matched) before this was relied on.
+  #
+  # The dump alone is NOT sufficient to recover: the Hevy keys inside it are
+  # encrypted with HEVY_KEY_ENCRYPTION_KEY, which lives only in .env. Back up
+  # both, and keep the key somewhere other than this VPS.
+  backup:
+    image: postgres:16-alpine
+    container_name: pulsekiosk-backup
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - backups:/backups
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          STAMP=$$(date +%Y%m%d-%H%M%S)
+          if pg_dump -h db -U ${POSTGRES_USER:-pulsekiosk} -d ${POSTGRES_DB:-pulsekiosk}                -f /backups/pulsekiosk-$$STAMP.sql 2>/backups/last-error.log; then
+            gzip -f /backups/pulsekiosk-$$STAMP.sql
+            echo "$$(date -Iseconds) ok pulsekiosk-$$STAMP.sql.gz" >> /backups/history.log
+          else
+            echo "$$(date -Iseconds) FAILED, see last-error.log" >> /backups/history.log
+          fi
+          # Keep 14 days; a gym pilot does not need more and the client's own
+          # database shares this disk.
+          find /backups -name 'pulsekiosk-*.sql.gz' -mtime +14 -delete
+          sleep 86400
+        done
+    networks: [internal]
+
   caddy:
     image: caddy:2-alpine
     container_name: pulsekiosk-caddy
@@ -112,6 +148,7 @@ volumes:
   db_data:
   caddy_data:
   caddy_config:
+  backups:
 
 networks:
   internal:

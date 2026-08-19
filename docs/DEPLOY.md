@@ -170,3 +170,35 @@ docker ps --filter name=pulsekiosk --format 'table {{.Names}}\t{{.Status}}'
 ```
 
 Anything saying `Restarting` is broken, however healthy the site looks.
+
+### Backups (automated)
+
+`pulsekiosk-backup` dumps the database daily into the `backups` volume and
+keeps 14 days. Restore was verified before relying on it: dump, restore into a
+scratch database, compare row counts.
+
+```bash
+docker exec pulsekiosk-backup ls -lh /backups
+docker exec pulsekiosk-backup cat /backups/history.log
+```
+
+Restoring:
+
+```bash
+docker exec pulsekiosk-backup sh -c 'gzip -dc /backups/pulsekiosk-XXXX.sql.gz' > restore.sql
+docker exec -i pulsekiosk-db psql -U pulsekiosk -d pulsekiosk < restore.sql
+```
+
+**A dump on its own cannot recover the system.** The Hevy keys inside it are
+encrypted with `HEVY_KEY_ENCRYPTION_KEY`, which lives only in the stack
+environment. Back up that key separately and off this VPS. Database plus key,
+or students re-link from scratch.
+
+### Cache backend
+
+Rate limits (kiosk login, pairing, admin login) are cache backed, and gunicorn
+runs 3 workers. With the default in-memory cache each worker keeps separate
+counters, so a limit of 10 is really 10 per worker and resets on restart. The
+stack therefore uses `DatabaseCache`; `entrypoint.sh` runs `createcachetable`
+on every boot. If you ever switch the cache back to locmem, every throttle
+silently weakens by a factor of the worker count.
