@@ -56,6 +56,14 @@ interface PendingWorkoutDao {
 
     @Query("SELECT COUNT(*) FROM pending_workouts WHERE blocked = 1")
     suspend fun blockedCount(): Int
+
+    @Query("SELECT COUNT(*) FROM pending_workouts WHERE blocked = 0")
+    suspend fun syncableCount(): Int
+
+    /** Un-parks blocked rows so staff can retry them after fixing the cause
+     *  (a deactivated exercise, a machine renamed, a backend that was down). */
+    @Query("UPDATE pending_workouts SET blocked = 0, attempts = 0 WHERE blocked = 1")
+    suspend fun unblockAll(): Int
 }
 
 @Database(entities = [PendingWorkout::class], version = 2, exportSchema = false)

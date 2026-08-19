@@ -38,14 +38,16 @@ def push_workout_log(log: WorkoutLog) -> bool:
     # Atomic claim: only one worker may move a row out of pending/failed.
     claimed = WorkoutLog.objects.filter(
         pk=log.pk, status__in=[WorkoutLog.STATUS_PENDING, WorkoutLog.STATUS_FAILED]
-    ).update(status=WorkoutLog.STATUS_PUSHING)
+    ).update(status=WorkoutLog.STATUS_PUSHING, claimed_at=timezone.now())
     if not claimed:
         logger.info("Skipping %s: already claimed or pushed", log.client_uuid)
         return False
     log.status = WorkoutLog.STATUS_PUSHING
 
     student = log.student
-    if not student.hevy_linked:
+    # Check the raw field, not hevy_linked: that now reports False for an
+    # unreadable key too, and the two cases need different guidance.
+    if not student.hevy_api_key_encrypted:
         return _fail(log, "Aluno sem conta Hevy vinculada")
 
     try:

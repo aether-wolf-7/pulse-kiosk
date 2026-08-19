@@ -92,10 +92,18 @@ Para trocar o wi-fi, atualizar o app ou qualquer manutenção:
 3. Toque em **Liberar tablet**
 
 O tablet volta ao normal, com botão home e barra de status. Quando terminar,
-toque em **Travar de novo**. Se esquecer, ele se trava sozinho em 15 minutos.
+**toque sempre em Travar de novo** e confirme que o tablet voltou pra tela de
+login do aplicativo.
 
-Esse código funciona mesmo sem internet, que costuma ser justamente quando
-você precisa dele.
+> **Não deixe o tablet destravado.** Ele não se tranca sozinho enquanto
+> estiver fora do aplicativo. Se você sair do app e for embora, o tablet fica
+> aberto pros alunos mexerem no Android. Se isso acontecer, é só abrir o
+> aplicativo de novo pela lista de aplicativos: ele volta a travar sozinho.
+
+O código de manutenção funciona mesmo sem internet, desde que o tablet já
+tenha sido pareado ao menos uma vez. Num tablet recém-configurado, que ainda
+não pareou com nenhuma máquina, o código ainda não está no aparelho: por isso
+o pareamento é feito com o cabo conectado, ainda com você por perto.
 
 ---
 

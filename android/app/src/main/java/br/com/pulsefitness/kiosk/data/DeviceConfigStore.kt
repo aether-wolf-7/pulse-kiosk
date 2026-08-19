@@ -65,7 +65,13 @@ class DeviceConfigStore(private val context: Context) {
         context.dataStore.edit { prefs ->
             prefs.remove(deviceTokenKey)
             prefs.remove(cachedConfigKey)
-            prefs.remove(adminPinHashKey)
+            // adminPinHashKey is deliberately KEPT. The maintenance code
+            // belongs to the gym, not to the machine, and it is the only way
+            // back into a tablet that is already Device Owner and pinned.
+            // Clearing it here created a deadlock on a wall mounted tablet:
+            // no pairing without wi-fi, no wi-fi settings without the
+            // maintenance code, and no way to restore the code without
+            // pairing first.
         }
     }
 }

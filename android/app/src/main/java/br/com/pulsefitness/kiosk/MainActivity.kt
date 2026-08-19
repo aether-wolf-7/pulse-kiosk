@@ -252,12 +252,16 @@ private fun AdminGate(
     )
     var locked by remember { mutableStateOf(activity?.let { KioskManager.isLocked(it) } ?: false) }
     var reprovisionError by remember { mutableStateOf<String?>(null) }
-    val pending by produceState(0) { value = viewModel.pendingQueueCount() }
+    var refreshCounts by remember { mutableStateOf(0) }
+    val pending by produceState(0, refreshCounts) { value = viewModel.pendingQueueCount() }
+    val blocked by produceState(0, refreshCounts) { value = viewModel.blockedQueueCount() }
 
     AdminScreen(
         viewModel = viewModel,
         config = config,
         pendingCount = pending,
+        blockedCount = blocked,
+        onRetryBlocked = { viewModel.retryBlocked { refreshCounts++ } },
         isDeviceOwner = activity?.let { KioskManager.isDeviceOwner(it) } ?: false,
         isLocked = locked,
         onUnlock = {

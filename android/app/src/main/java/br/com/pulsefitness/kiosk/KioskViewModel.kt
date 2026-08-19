@@ -200,6 +200,9 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun reprovision(onResult: (error: String?) -> Unit) {
         viewModelScope.launch {
+            // Only rows that can still be sent block a move. Parked rows
+            // would otherwise deadlock this forever, and moving the tablet
+            // does not make them any less recoverable.
             val pending = pendingQueueCount()
             if (pending > 0) {
                 onResult("$pending treino(s) ainda não enviado(s). Conecte na internet antes de trocar.")
@@ -214,7 +217,25 @@ class KioskViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Workouts still waiting to reach the backend, shown to staff. */
     suspend fun pendingQueueCount(): Int =
-        KioskDatabase.get(getApplication()).pendingWorkoutDao().all().size
+        KioskDatabase.get(getApplication()).pendingWorkoutDao().syncableCount()
+
+    /**
+     * Workouts the server refused and that the queue parked. They are kept
+     * rather than deleted (they are the only copy of a student's sets), but
+     * nothing retries them on its own, so staff need to see the number.
+     */
+    suspend fun blockedQueueCount(): Int =
+        KioskDatabase.get(getApplication()).pendingWorkoutDao().blockedCount()
+
+    /** Retry parked workouts after fixing whatever the server objected to. */
+    fun retryBlocked(onDone: (Int) -> Unit) {
+        viewModelScope.launch {
+            val dao = KioskDatabase.get(getApplication()).pendingWorkoutDao()
+            val n = dao.unblockAll()
+            SyncWorker.enqueue(getApplication())
+            onDone(n)
+        }
+    }
 
     /**
      * Checks the staff maintenance code against the hash cached from the last

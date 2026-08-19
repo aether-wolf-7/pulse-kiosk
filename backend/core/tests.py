@@ -240,7 +240,11 @@ class WorkoutSubmitTests(TestCase):
 
     @patch("core.sync.HevyClient.create_workout", return_value={"workout": {"id": "HW5"}})
     def test_stale_pushing_row_is_recovered(self, mock_create):
-        log = self._failed_log(minutes_ago=30, status=WorkoutLog.STATUS_PUSHING)
+        log = self._failed_log(
+            minutes_ago=30,
+            status=WorkoutLog.STATUS_PUSHING,
+            claimed_at=timezone.now() - timezone.timedelta(minutes=30),
+        )
         from django.core.management import call_command
 
         call_command("retry_hevy_pushes")
@@ -636,3 +640,82 @@ class AdminLoginRateLimitTests(TestCase):
         for _ in range(5):
             self.attempt("errada")
         self.assertEqual(self.client.get("/api/v1/health/").status_code, 200)
+
+
+@override_settings(HEVY_KEY_ENCRYPTION_KEY=Fernet.generate_key().decode())
+class AuditRegressionTests(TestCase):
+    """Regressions for defects found by the pre-installation audit."""
+
+    def setUp(self):
+        self.academia, self.supino, self.cadeira, self.student = make_pilot()
+        self.exercise = self.supino.exercises.first()
+
+    def _log(self, **kw):
+        fields = dict(
+            client_uuid=uuid.uuid4(),
+            student=self.student,
+            machine=self.supino,
+            exercise=self.exercise,
+            sets=[{"weight_kg": 20, "reps": 10}],
+        )
+        fields.update(kw)
+        return WorkoutLog.objects.create(**fields)
+
+    @patch("core.sync.HevyClient.create_workout", return_value={"workout": {"id": "X"}})
+    def test_offline_resend_is_not_treated_as_a_crashed_push(self, mock_create):
+        """Staleness must come from the server claim, not the tablet clock.
+
+        An offline tablet can resend a workout logged hours ago. Judging
+        staleness by logged_at made that look abandoned mid-push and posted
+        it to Hevy twice.
+        """
+        self.student.set_hevy_api_key("k")
+        self.student.save()
+        log = self._log(
+            logged_at=timezone.now() - timezone.timedelta(hours=6),
+            status=WorkoutLog.STATUS_PUSHING,
+            claimed_at=timezone.now(),  # claimed just now: still in flight
+        )
+        from django.core.management import call_command
+
+        call_command("retry_hevy_pushes", "--min-age-minutes", "0")
+        log.refresh_from_db()
+        self.assertEqual(log.status, WorkoutLog.STATUS_PUSHING)
+        mock_create.assert_not_called()
+
+    @patch("core.sync.HevyClient.create_workout", return_value={"workout": {"id": "Y"}})
+    def test_genuinely_abandoned_push_is_recovered(self, mock_create):
+        self.student.set_hevy_api_key("k")
+        self.student.save()
+        log = self._log(
+            logged_at=timezone.now() - timezone.timedelta(minutes=40),
+            status=WorkoutLog.STATUS_PUSHING,
+            claimed_at=timezone.now() - timezone.timedelta(minutes=40),
+        )
+        from django.core.management import call_command
+
+        call_command("retry_hevy_pushes")
+        log.refresh_from_db()
+        self.assertEqual(log.status, WorkoutLog.STATUS_PUSHED)
+
+    def test_unreadable_key_reports_unlinked_so_the_student_can_relink(self):
+        """Reporting ciphertext presence stranded students after a key change:
+        the tablet never offered the link screen again."""
+        self.student.hevy_api_key_encrypted = (
+            Fernet(Fernet.generate_key()).encrypt(b"x").decode()
+        )
+        self.student.save()
+        self.assertFalse(self.student.hevy_linked)
+
+        resp = self.client.post(
+            "/api/v1/auth/login/",
+            {"student_id": "1001", "pin": "4321"},
+            content_type="application/json",
+            headers={"X-Device-Token": self.supino.device_token},
+        )
+        self.assertFalse(resp.json()["student"]["hevy_linked"])
+
+    def test_readable_key_still_reports_linked(self):
+        self.student.set_hevy_api_key("real-key")
+        self.student.save()
+        self.assertTrue(self.student.hevy_linked)

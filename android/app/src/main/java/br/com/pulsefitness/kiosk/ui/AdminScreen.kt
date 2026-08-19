@@ -38,6 +38,8 @@ fun AdminScreen(
     viewModel: KioskViewModel,
     config: MachineConfigResponse,
     pendingCount: Int,
+    blockedCount: Int = 0,
+    onRetryBlocked: () -> Unit = {},
     isDeviceOwner: Boolean,
     isLocked: Boolean,
     onUnlock: () -> Unit,
@@ -105,6 +107,19 @@ fun AdminScreen(
         Text("Modo quiosque: ${if (isDeviceOwner) "ativo" else "não configurado"}")
         Text("Tela travada: ${if (isLocked) "sim" else "não"}")
         Text("Treinos aguardando envio: $pendingCount")
+        if (blockedCount > 0) {
+            // Parked because the server refused them. Kept rather than
+            // dropped, but nothing retries them on its own, so they must be
+            // visible or a student's sets vanish silently.
+            Text(
+                "Treinos parados (recusados pelo servidor): $blockedCount",
+                color = MaterialTheme.colorScheme.error,
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = onRetryBlocked, modifier = Modifier.width(360.dp)) {
+                Text("Tentar enviar os treinos parados de novo")
+            }
+        }
         Spacer(Modifier.height(32.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             if (isLocked) {

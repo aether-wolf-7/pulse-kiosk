@@ -165,7 +165,19 @@ class Student(models.Model):
 
     @property
     def hevy_linked(self) -> bool:
-        return bool(self.hevy_api_key_encrypted)
+        """True only if the stored key can actually be decrypted.
+
+        Reporting mere ciphertext presence stranded students after a key
+        rotation: the API said linked, so the tablet never offered the link
+        screen again, and every workout failed forever with no way back.
+        """
+        if not self.hevy_api_key_encrypted:
+            return False
+        try:
+            crypto.decrypt(self.hevy_api_key_encrypted)
+            return True
+        except Exception:
+            return False
 
     def set_hevy_api_key(self, raw_key: str):
         self.hevy_api_key_encrypted = crypto.encrypt(raw_key)
@@ -232,6 +244,11 @@ class WorkoutLog(models.Model):
     hevy_workout_id = models.CharField(max_length=64, blank=True, default="")
     error_detail = models.TextField(blank=True, default="")
     logged_at = models.DateTimeField(default=timezone.now)
+    # Set by the server when a push claims this row. Staleness must never be
+    # judged from logged_at: that is the TABLET's clock and an offline resend
+    # can arrive hours late, which would make a healthy in-flight push look
+    # abandoned and get it posted to Hevy twice.
+    claimed_at = models.DateTimeField(null=True, blank=True)
     pushed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:

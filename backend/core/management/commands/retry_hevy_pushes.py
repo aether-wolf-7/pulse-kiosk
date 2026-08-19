@@ -39,14 +39,14 @@ class Command(BaseCommand):
             WorkoutLog.objects.filter(logged_at__gte=cutoff_old, logged_at__lte=cutoff_recent)
             .filter(
                 Q(status__in=[WorkoutLog.STATUS_PENDING, WorkoutLog.STATUS_FAILED])
-                | Q(status=WorkoutLog.STATUS_PUSHING, logged_at__lte=stale_pushing)
+                | Q(status=WorkoutLog.STATUS_PUSHING, claimed_at__lte=stale_pushing)
             )
             .select_related("student", "machine__academia", "exercise")
         )
 
         # Recover rows abandoned by a crashed push so they can be claimed again.
         WorkoutLog.objects.filter(
-            status=WorkoutLog.STATUS_PUSHING, logged_at__lte=stale_pushing
+            status=WorkoutLog.STATUS_PUSHING, claimed_at__lte=stale_pushing
         ).update(status=WorkoutLog.STATUS_FAILED, error_detail="Envio interrompido, reenfileirado")
 
         total, ok = 0, 0
