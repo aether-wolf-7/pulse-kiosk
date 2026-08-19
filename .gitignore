@@ -29,3 +29,7 @@ backend/staticfiles/
 # release signing (keystore + passwords stay off git)
 android/keystore.properties
 android/*.jks
+
+# provisioning kit downloads these locally
+scripts/tablet/platform-tools/
+scripts/tablet/*.apk
