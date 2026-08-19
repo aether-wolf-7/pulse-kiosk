@@ -9,7 +9,14 @@ programação. São uns 15 minutos por tablet.
 - O cabo USB do tablet
 - Um computador com Windows e internet
 - A pasta `tablet` que o João enviou
-- Acesso ao painel: https://kiosk.pulsefitness.com.br/admin
+- **Acesso ao painel** https://kiosk.pulsefitness.com.br/admin, ou alguém
+  disponível no telefone que tenha esse acesso
+
+> **Sobre o acesso ao painel:** no meio da instalação você precisa gerar um
+> código de 6 dígitos pra cada tablet, e esse código **vale 30 minutos**. Ou
+> você faz a instalação com o painel aberto do seu lado, ou combina com quem
+> tem o acesso de gerar o código na hora e te passar. Não adianta gerar os
+> três códigos de manhã e instalar à tarde: eles expiram.
 
 ---
 
@@ -30,12 +37,18 @@ zerado.
 3. **Não coloque senha nem padrão de bloqueio.** Deixe deslizar.
    Se colocar senha, o tablet vai mostrar tela de bloqueio e o aluno não passa.
 
-4. **Ligue a Depuração USB**
+4. **No computador, instale o driver USB da Samsung** (só na primeira vez)
+   O Windows às vezes não enxerga o tablet sem ele, e aí o instalador diz que
+   não encontrou nenhum tablet. Baixe em:
+   https://developer.samsung.com/android-usb-driver
+   Instale e reinicie o computador se ele pedir.
+
+5. **Ligue a Depuração USB**
    - Ajustes > Sobre o tablet > Informações de software
    - Toque **7 vezes** seguidas em Número da versão
    - Volte, entre em Opções do desenvolvedor e ligue **Depuração USB**
 
-5. **Agora sim conecte o wi-fi da academia.**
+6. **Agora sim conecte o wi-fi da academia.**
 
 ---
 
