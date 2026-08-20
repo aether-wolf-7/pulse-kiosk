@@ -38,6 +38,37 @@ Titulo "PULSE KIOSK - Configuracao do tablet"
 Write-Host "  Este script prepara UM tablet. Rode uma vez para cada um."
 Write-Host ""
 
+# Running straight from inside the .zip is the most likely mistake: Windows
+# opens a zip like a folder, extracts to a temporary place on double click,
+# and the script then cannot find its own files or keep what it downloads.
+if ($Base -like "*\AppData\Local\Temp\*" -or $Base -like "*.zip*") {
+    Write-Host ""
+    Write-Host "  Parece que voce abriu o arquivo de dentro do ZIP." -ForegroundColor Red
+    Write-Host ""
+    Write-Host "  Faca assim:" -ForegroundColor Yellow
+    Write-Host "    1. Feche esta janela"
+    Write-Host "    2. Clique com o botao direito no ZIP e escolha Extrair tudo"
+    Write-Host "    3. Extraia para C:\pulse-kiosk"
+    Write-Host "    4. Abra a pasta C:\pulse-kiosk e de duplo clique no provisionar.bat"
+    Write-Host ""
+    Read-Host "  Pressione ENTER para fechar"
+    exit 1
+}
+
+# Both files have to travel together.
+if (-not (Test-Path (Join-Path $Base "provisionar.bat"))) {
+    Write-Host ""
+    Write-Host "  Falta o arquivo provisionar.bat nesta pasta." -ForegroundColor Red
+    Write-Host "  Os dois arquivos precisam ficar juntos na mesma pasta." -ForegroundColor Red
+    Write-Host "  Pasta atual: $Base"
+    Write-Host ""
+    Read-Host "  Pressione ENTER para fechar"
+    exit 1
+}
+
+Write-Host "  Pasta de trabalho: $Base"
+Write-Host ""
+
 Titulo "1 de 6 - Preparando as ferramentas"
 $Adb = Join-Path $Base "platform-tools\adb.exe"
 if (-not (Test-Path $Adb)) {

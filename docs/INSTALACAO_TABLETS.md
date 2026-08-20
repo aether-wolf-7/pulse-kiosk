@@ -8,7 +8,7 @@ programação. São uns 15 minutos por tablet.
 - O tablet
 - O cabo USB do tablet
 - Um computador com Windows e internet
-- A pasta `tablet` que o João enviou
+- O arquivo ZIP que o João enviou (veja a Parte 2)
 - **Acesso ao painel** https://kiosk.pulsefitness.com.br/admin, ou alguém
   disponível no telefone que tenha esse acesso
 
@@ -52,11 +52,32 @@ zerado.
 
 ---
 
-## Parte 2 — Rodar a instalação
+## Parte 2 — Onde colocar os arquivos
+
+O João envia um arquivo ZIP com dois arquivos dentro: `provisionar.bat` e
+`provisionar.ps1`.
+
+1. Clique com o **botão direito** no ZIP e escolha **Extrair tudo**
+2. Extraia para **`C:\pulse-kiosk`**
+   Pode ser outra pasta, mas evite Área de Trabalho, Documentos ou pastas com
+   acento no nome, porque às vezes dão problema. `C:\pulse-kiosk` é o mais
+   seguro.
+3. Abra a pasta e confirme que os **dois arquivos estão lá, juntos**
+
+> **Não dê duplo clique direto de dentro do ZIP.** O Windows abre o ZIP como
+> se fosse uma pasta normal, mas o programa não funciona assim. Extraia
+> primeiro. Se você tentar, o programa avisa e fecha sem fazer nada.
+
+O programa vai criar mais arquivos dentro dessa pasta enquanto trabalha, isso
+é normal. Deixe uns 500 MB livres no disco.
+
+---
+
+## Parte 3 — Rodar a instalação
 
 1. Conecte o tablet no computador pelo cabo USB.
 
-2. Na pasta `tablet`, dê **duplo clique em `provisionar.bat`**.
+2. Na pasta `C:\pulse-kiosk`, dê **duplo clique em `provisionar.bat`**.
 
 3. Vai abrir uma janela preta com o passo a passo. Siga o que ela pedir.
    Se aparecer um aviso no tablet pedindo permissão para o computador, marque
@@ -76,7 +97,7 @@ fica quebrado no tablet: resolva e rode de novo.
 
 ---
 
-## Parte 3 — Conferir
+## Parte 4 — Conferir
 
 - Reinicie o tablet. Ele tem que voltar sozinho no aplicativo, sem ninguém tocar.
 - Aperte o botão home e o de recentes. Nada pode acontecer.
@@ -86,7 +107,7 @@ Se os três estiverem assim, o tablet está pronto.
 
 ---
 
-## Parte 4 — Montagem
+## Parte 5 — Montagem
 
 - Deixe o **carregador sempre ligado**. O tablet é feito para ficar na tomada.
 - Monte o suporte **cobrindo os botões de liga/desliga e de volume**.
